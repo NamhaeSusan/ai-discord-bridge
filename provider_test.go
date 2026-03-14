@@ -146,3 +146,50 @@ func TestRunnerShouldHandleChannelMessage(t *testing.T) {
 		t.Fatalf("expected guild message with bot mention to be handled")
 	}
 }
+
+func TestRunnerShouldHandleThreadMessage(t *testing.T) {
+	registry := newThreadRegistry()
+	registry.Claim("thread-1", "claude")
+
+	runner := &Runner{
+		cfg:     BotConfig{Name: "claude"},
+		threads: registry,
+		session: &discordgo.Session{
+			State: &discordgo.State{
+				Ready: discordgo.Ready{
+					User: &discordgo.User{ID: "bot-1"},
+				},
+			},
+		},
+	}
+
+	if !runner.shouldHandleThreadMessage(&discordgo.MessageCreate{
+		Message: &discordgo.Message{ChannelID: "thread-1", GuildID: "guild-1"},
+	}) {
+		t.Fatalf("expected claimed thread to be handled by owning bot")
+	}
+
+	other := &Runner{
+		cfg:     BotConfig{Name: "codex"},
+		threads: registry,
+		session: runner.session,
+	}
+
+	if other.shouldHandleThreadMessage(&discordgo.MessageCreate{
+		Message: &discordgo.Message{ChannelID: "thread-1", GuildID: "guild-1"},
+	}) {
+		t.Fatalf("expected claimed thread to be ignored by other bot")
+	}
+
+	if !other.shouldHandleThreadMessage(&discordgo.MessageCreate{
+		Message: &discordgo.Message{
+			ChannelID: "thread-2",
+			GuildID:   "guild-1",
+			Mentions: []*discordgo.User{
+				{ID: "bot-1"},
+			},
+		},
+	}) {
+		t.Fatalf("expected unclaimed thread with bot mention to be handled")
+	}
+}

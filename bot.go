@@ -19,14 +19,16 @@ type Runner struct {
 	session   *discordgo.Session
 	cfg       BotConfig
 	provider  Provider
+	threads   *threadRegistry
 	sessions  sync.Map
 	semaphore chan struct{}
 }
 
 func NewBots(cfgs []BotConfig) ([]*Runner, error) {
+	registry := newThreadRegistry()
 	bots := make([]*Runner, 0, len(cfgs))
 	for _, cfg := range cfgs {
-		bot, err := NewBot(cfg)
+		bot, err := NewBot(cfg, registry)
 		if err != nil {
 			return nil, err
 		}
@@ -35,7 +37,7 @@ func NewBots(cfgs []BotConfig) ([]*Runner, error) {
 	return bots, nil
 }
 
-func NewBot(cfg BotConfig) (*Runner, error) {
+func NewBot(cfg BotConfig, registry *threadRegistry) (*Runner, error) {
 	dg, err := discordgo.New("Bot " + cfg.BotToken)
 	if err != nil {
 		return nil, err
@@ -52,6 +54,7 @@ func NewBot(cfg BotConfig) (*Runner, error) {
 		session:   dg,
 		cfg:       cfg,
 		provider:  provider,
+		threads:   registry,
 		semaphore: make(chan struct{}, cfg.MaxConcurrent),
 	}
 
@@ -90,7 +93,7 @@ func (b *Runner) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreat
 	}
 
 	if m.GuildID != "" && isThreadChannel(s, m.ChannelID) {
-		if !b.ownsThread(s, m.ChannelID) {
+		if !b.shouldHandleThreadMessage(m) {
 			return
 		}
 	} else if !b.shouldHandleChannelMessage(m) {
@@ -161,18 +164,20 @@ func (b *Runner) runThreadMessage(ctx context.Context, channelID, prompt string)
 		return b.provider.Run(ctx, prompt)
 	}
 
-	return b.provider.Resume(ctx, entry.(sessionEntry).sessionID, prompt)
+	session := entry.(sessionEntry)
+	if session.sessionID == "" {
+		return b.provider.Run(ctx, prompt)
+	}
+
+	return b.provider.Resume(ctx, session.sessionID, prompt)
 }
 
 func (b *Runner) storeSession(channelID, sessionID string) {
-	if sessionID == "" {
-		return
-	}
-
 	b.sessions.Store(channelID, sessionEntry{
 		sessionID: sessionID,
 		createdAt: time.Now(),
 	})
+	b.threads.Claim(channelID, b.cfg.Name)
 }
 
 func (b *Runner) sendChunks(s *discordgo.Session, channelID string, result *ProviderResult) {
@@ -268,16 +273,45 @@ func (b *Runner) shouldHandleChannelMessage(m *discordgo.MessageCreate) bool {
 	return false
 }
 
-func (b *Runner) ownsThread(s *discordgo.Session, channelID string) bool {
-	ch, err := s.Channel(channelID)
-	if err != nil || ch == nil {
-		return false
+func (b *Runner) shouldHandleThreadMessage(m *discordgo.MessageCreate) bool {
+	owner, claimed := b.threads.Owner(m.ChannelID)
+	if claimed {
+		return owner == b.cfg.Name
 	}
 
-	botUser := b.session.State.User
-	if botUser == nil {
-		return false
+	return b.shouldHandleChannelMessage(m)
+}
+
+type threadRegistry struct {
+	m sync.Map
+}
+
+func newThreadRegistry() *threadRegistry {
+	return &threadRegistry{}
+}
+
+func (r *threadRegistry) Claim(channelID, botName string) {
+	if channelID == "" || botName == "" {
+		return
 	}
 
-	return ch.OwnerID == botUser.ID
+	r.m.Store(channelID, botName)
+}
+
+func (r *threadRegistry) Owner(channelID string) (string, bool) {
+	if channelID == "" {
+		return "", false
+	}
+
+	owner, ok := r.m.Load(channelID)
+	if !ok {
+		return "", false
+	}
+
+	name, ok := owner.(string)
+	if !ok || name == "" {
+		return "", false
+	}
+
+	return name, true
 }
