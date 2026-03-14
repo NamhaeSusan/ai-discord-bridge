@@ -1,0 +1,21 @@
+# AI Discord Bridge — Claude Code CLI Bridge
+# Copy to config.toml and fill in values.
+# Usage: go run . -config config/config.toml
+
+# Required: Discord bot token from Developer Portal
+bot_token = ""
+
+# Optional: restrict to specific channels/users (Discord IDs)
+# allowed_channels = ["123456789"]
+# allowed_users = ["987654321"]
+
+# Claude CLI settings
+# claude_working_dir = "/path/to/project"
+# claude_model = "sonnet"
+# claude_max_budget_usd = 5.0
+# claude_allowed_tools = ["Read", "Grep", "Glob"]
+# claude_timeout_seconds = 300
+
+# Bot resource limits
+# max_concurrent = 5         # max parallel claude invocations
+# session_ttl_minutes = 60   # session map cleanup interval

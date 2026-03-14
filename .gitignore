@@ -1,0 +1,15 @@
+# Binary
+ai-discord-bridge
+
+# Config (contains secrets)
+config/config.toml
+
+# OS
+.DS_Store
+
+# Editor
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
