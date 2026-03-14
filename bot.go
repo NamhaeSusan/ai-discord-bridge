@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -17,7 +18,7 @@ type sessionEntry struct {
 type Bot struct {
 	session   *discordgo.Session
 	cfg       *Config
-	sessions  sync.Map // bot reply msg ID → sessionEntry
+	sessions  sync.Map // thread ID → sessionEntry
 	semaphore chan struct{}
 }
 
@@ -79,54 +80,94 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 	case b.semaphore <- struct{}{}:
 		defer func() { <-b.semaphore }()
 	default:
-		s.ChannelMessageSendReply(m.ChannelID, "Too many requests in progress. Please try again later.", m.Reference())
+		s.ChannelMessageSend(m.ChannelID, "Too many requests in progress. Please try again later.")
 		return
 	}
 
 	ctx := context.Background()
+	isThread := m.GuildID != "" && isThreadChannel(s, m.ChannelID)
 
-	// Start typing indicator in background
+	if isThread {
+		// Message in existing thread → resume session
+		b.handleThreadMessage(ctx, s, m)
+	} else {
+		// Message in regular channel → create thread + new session
+		b.handleChannelMessage(ctx, s, m)
+	}
+}
+
+func (b *Bot) handleChannelMessage(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate) {
+	// Create thread from the user's message
+	threadName := truncate(m.Content, 100)
+	thread, err := s.MessageThreadStartComplex(m.ChannelID, m.ID, &discordgo.ThreadStart{
+		Name:                threadName,
+		AutoArchiveDuration: 60,
+	})
+	if err != nil {
+		log.Printf("failed to create thread: %v", err)
+		return
+	}
+
+	done := make(chan struct{})
+	go b.sendTyping(s, thread.ID, done)
+
+	result, err := RunClaude(ctx, b.cfg, m.Content)
+	close(done)
+
+	if err != nil {
+		log.Printf("claude error for user %s: %v", m.Author.ID, err)
+		s.ChannelMessageSend(thread.ID, "Something went wrong. Check bot logs for details.")
+		return
+	}
+
+	b.sendChunks(s, thread.ID, result)
+
+	if result.SessionID != "" {
+		b.sessions.Store(thread.ID, sessionEntry{
+			sessionID: result.SessionID,
+			createdAt: time.Now(),
+		})
+	}
+}
+
+func (b *Bot) handleThreadMessage(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate) {
 	done := make(chan struct{})
 	go b.sendTyping(s, m.ChannelID, done)
 
 	var result *ClaudeResult
 	var err error
 
-	if m.MessageReference != nil {
-		if entry, ok := b.sessions.Load(m.MessageReference.MessageID); ok {
-			e := entry.(sessionEntry)
-			result, err = ResumeClaude(ctx, b.cfg, e.sessionID, m.Content)
-		} else {
-			result, err = RunClaude(ctx, b.cfg, m.Content)
-		}
+	if entry, ok := b.sessions.Load(m.ChannelID); ok {
+		e := entry.(sessionEntry)
+		result, err = ResumeClaude(ctx, b.cfg, e.sessionID, m.Content)
 	} else {
 		result, err = RunClaude(ctx, b.cfg, m.Content)
 	}
-
 	close(done)
 
 	if err != nil {
 		log.Printf("claude error for user %s: %v", m.Author.ID, err)
-		s.ChannelMessageSendReply(m.ChannelID, "Something went wrong. Check bot logs for details.", m.Reference())
+		s.ChannelMessageSend(m.ChannelID, "Something went wrong. Check bot logs for details.")
 		return
 	}
 
-	chunks := FormatResponse(result)
-	var lastMsgID string
-	for _, chunk := range chunks {
-		msg, sendErr := s.ChannelMessageSendReply(m.ChannelID, chunk, m.Reference())
-		if sendErr != nil {
-			log.Printf("failed to send message: %v", sendErr)
-			return
-		}
-		lastMsgID = msg.ID
-	}
+	b.sendChunks(s, m.ChannelID, result)
 
-	if lastMsgID != "" && result.SessionID != "" {
-		b.sessions.Store(lastMsgID, sessionEntry{
+	if result.SessionID != "" {
+		b.sessions.Store(m.ChannelID, sessionEntry{
 			sessionID: result.SessionID,
 			createdAt: time.Now(),
 		})
+	}
+}
+
+func (b *Bot) sendChunks(s *discordgo.Session, channelID string, result *ClaudeResult) {
+	chunks := FormatResponse(result)
+	for _, chunk := range chunks {
+		if _, err := s.ChannelMessageSend(channelID, chunk); err != nil {
+			log.Printf("failed to send message: %v", err)
+			return
+		}
 	}
 }
 
@@ -163,4 +204,19 @@ func (b *Bot) sendTyping(s *discordgo.Session, channelID string, done <-chan str
 			s.ChannelTyping(channelID)
 		}
 	}
+}
+
+func isThreadChannel(s *discordgo.Session, channelID string) bool {
+	ch, err := s.Channel(channelID)
+	if err != nil {
+		return false
+	}
+	return ch.IsThread()
+}
+
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return fmt.Sprintf("%s...", s[:maxLen-3])
 }
