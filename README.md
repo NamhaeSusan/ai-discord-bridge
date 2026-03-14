@@ -1,15 +1,16 @@
 # AI Discord Bridge
 
-Discord bot that bridges AI CLI tools (Claude Code, etc.) to Discord channels.
+Discord bot that bridges AI CLI tools like Claude Code and Codex to Discord channels.
 
 ## Features
 
-- Send Discord messages → Claude CLI (`--print`) → reply with results
-- Reply to bot messages to resume the same Claude session (`--resume`)
-- TOML config file + environment variable overrides (12-factor compatible)
+- Run multiple Discord bots from one process
+- Send Discord messages to Claude or Codex and continue in the created thread
+- Reply in a thread to resume the same Claude or Codex session
+- TOML config file for multi-bot setup, plus legacy single-bot env overrides
 - Channel/user whitelist filtering
 - Auto-chunking for messages over 2000 characters (with code block split handling)
-- Typing indicator while Claude is running (8s interval)
+- Typing indicator while the provider is running (8s interval)
 - Concurrent execution limit (semaphore, default 5)
 - Session map with TTL-based auto-cleanup (default 60 min)
 
@@ -17,6 +18,7 @@ Discord bot that bridges AI CLI tools (Claude Code, etc.) to Discord channels.
 
 - Go 1.26+
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and in PATH
+- `codex` CLI installed and in PATH if any bot uses `provider = "codex"`
 
 ## Setup
 
@@ -28,24 +30,49 @@ Discord bot that bridges AI CLI tools (Claude Code, etc.) to Discord channels.
 cp config/config.example.toml config/config.toml
 ```
 
-4. Fill in `bot_token` and optional settings
+4. Fill in one or more `[[bots]]` entries
 
 ## Configuration
 
-| Field | Env Var | Description |
-|-------|---------|-------------|
-| `bot_token` | `DISCORD_BOT_TOKEN` | Discord bot token (required) |
-| `allowed_channels` | `DISCORD_ALLOWED_CHANNELS` | Comma-separated channel IDs |
-| `allowed_users` | `DISCORD_ALLOWED_USERS` | Comma-separated user IDs |
-| `claude_working_dir` | `CLAUDE_WORKING_DIR` | Working directory for Claude CLI |
-| `claude_model` | `CLAUDE_MODEL` | Claude model to use |
-| `claude_max_budget_usd` | `CLAUDE_MAX_BUDGET_USD` | Max budget per invocation |
-| `claude_allowed_tools` | `CLAUDE_ALLOWED_TOOLS` | Comma-separated allowed tools |
-| `claude_timeout_seconds` | `CLAUDE_TIMEOUT_SECONDS` | Timeout per invocation (default: 300) |
-| `max_concurrent` | — | Max parallel Claude invocations (default: 5) |
-| `session_ttl_minutes` | — | Session cleanup interval (default: 60) |
+Each bot uses one `[[bots]]` entry:
 
-Environment variables override TOML values.
+| Field | Description |
+|-------|-------------|
+| `name` | Bot name for logs |
+| `provider` | `claude` or `codex` |
+| `bot_token` | Discord bot token |
+| `allowed_channels` | Channel ID allowlist |
+| `allowed_users` | User ID allowlist |
+| `working_dir` | CLI working directory |
+| `model` | Model name passed to the CLI |
+| `timeout_seconds` | Timeout per invocation (default: 300) |
+| `max_concurrent` | Max parallel invocations (default: 5) |
+| `session_ttl_minutes` | Session cleanup TTL (default: 60) |
+| `max_budget_usd` | Claude-only budget limit |
+| `allowed_tools` | Claude-only allowed tools |
+| `sandbox` | Codex-only sandbox mode (default: `danger-full-access`) |
+
+Legacy top-level Claude config and env overrides still work for a single-bot setup. The new multi-bot format is TOML-first.
+
+Example:
+
+```toml
+[[bots]]
+name = "claude"
+provider = "claude"
+bot_token = "discord-token-for-claude"
+working_dir = "/path/to/project"
+model = "sonnet"
+allowed_tools = ["Read", "Grep", "Glob"]
+
+[[bots]]
+name = "codex"
+provider = "codex"
+bot_token = "discord-token-for-codex"
+working_dir = "/path/to/project"
+model = "gpt-5-codex"
+sandbox = "danger-full-access"
+```
 
 ## Run
 

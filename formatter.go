@@ -3,31 +3,39 @@ package main
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
 const maxChunkSize = 2000
 
-func FormatResponse(result *ClaudeResult) []string {
+func FormatResponse(result *ProviderResult) []string {
 	text := result.Result
-	costInfo := fmt.Sprintf("\n\n> Cost: $%.4f | Duration: %s", result.CostUSD, result.Duration.Truncate(100*1e6))
+	meta := formatResultMeta(result)
 
-	if len(text)+len(costInfo) <= maxChunkSize {
-		return []string{text + costInfo}
+	if len(text)+len(meta) <= maxChunkSize {
+		return []string{text + meta}
 	}
 
 	chunks := splitIntoChunks(text)
 	if len(chunks) == 0 {
-		return []string{costInfo}
+		return []string{meta}
 	}
 
-	// Ensure last chunk has room for cost info
 	last := chunks[len(chunks)-1]
-	if len(last)+len(costInfo) > maxChunkSize {
-		chunks = append(chunks, costInfo)
+	if len(last)+len(meta) > maxChunkSize {
+		chunks = append(chunks, meta)
 	} else {
-		chunks[len(chunks)-1] = last + costInfo
+		chunks[len(chunks)-1] = last + meta
 	}
 	return chunks
+}
+
+func formatResultMeta(result *ProviderResult) string {
+	duration := result.Duration.Truncate(100 * time.Millisecond)
+	if result.HasCost {
+		return fmt.Sprintf("\n\n> Provider: %s | Cost: $%.4f | Duration: %s", result.Provider, result.CostUSD, duration)
+	}
+	return fmt.Sprintf("\n\n> Provider: %s | Duration: %s", result.Provider, duration)
 }
 
 func splitIntoChunks(text string) []string {
