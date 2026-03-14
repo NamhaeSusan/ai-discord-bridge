@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"slices"
 	"sync"
 	"time"
 
@@ -228,13 +229,7 @@ func matchesFilter(allowed []string, actual string) bool {
 		return true
 	}
 
-	for _, item := range allowed {
-		if item == actual {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(allowed, actual)
 }
 
 func matchesChannelFilter(s *discordgo.Session, allowed []string, channelID string) bool {
