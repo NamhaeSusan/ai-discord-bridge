@@ -89,6 +89,14 @@ func (b *Runner) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreat
 		return
 	}
 
+	if m.GuildID != "" && isThreadChannel(s, m.ChannelID) {
+		if !b.ownsThread(s, m.ChannelID) {
+			return
+		}
+	} else if !b.shouldHandleChannelMessage(m) {
+		return
+	}
+
 	select {
 	case b.semaphore <- struct{}{}:
 		defer func() { <-b.semaphore }()
@@ -177,7 +185,7 @@ func (b *Runner) sendChunks(s *discordgo.Session, channelID string, result *Prov
 }
 
 func (b *Runner) isAllowed(m *discordgo.MessageCreate) bool {
-	return matchesFilter(b.cfg.AllowedChannels, m.ChannelID) && matchesFilter(b.cfg.AllowedUsers, m.Author.ID)
+	return matchesChannelFilter(b.session, b.cfg.AllowedChannels, m.ChannelID) && matchesFilter(b.cfg.AllowedUsers, m.Author.ID)
 }
 
 func (b *Runner) sendTyping(s *discordgo.Session, channelID string, done <-chan struct{}) {
@@ -222,4 +230,54 @@ func matchesFilter(allowed []string, actual string) bool {
 	}
 
 	return false
+}
+
+func matchesChannelFilter(s *discordgo.Session, allowed []string, channelID string) bool {
+	if len(allowed) == 0 {
+		return true
+	}
+
+	if matchesFilter(allowed, channelID) {
+		return true
+	}
+
+	ch, err := s.Channel(channelID)
+	if err != nil || ch == nil || ch.ParentID == "" {
+		return false
+	}
+
+	return matchesFilter(allowed, ch.ParentID)
+}
+
+func (b *Runner) shouldHandleChannelMessage(m *discordgo.MessageCreate) bool {
+	if m.GuildID == "" {
+		return true
+	}
+
+	botUser := b.session.State.User
+	if botUser == nil {
+		return false
+	}
+
+	for _, mention := range m.Mentions {
+		if mention != nil && mention.ID == botUser.ID {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (b *Runner) ownsThread(s *discordgo.Session, channelID string) bool {
+	ch, err := s.Channel(channelID)
+	if err != nil || ch == nil {
+		return false
+	}
+
+	botUser := b.session.State.User
+	if botUser == nil {
+		return false
+	}
+
+	return ch.OwnerID == botUser.ID
 }

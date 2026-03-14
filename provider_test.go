@@ -3,6 +3,8 @@ package main
 import (
 	"reflect"
 	"testing"
+
+	"github.com/bwmarrin/discordgo"
 )
 
 func TestBuildClaudeArgs(t *testing.T) {
@@ -102,5 +104,45 @@ func TestFormatResponseWithoutCost(t *testing.T) {
 	}
 	if chunks[0] == "hello" {
 		t.Fatalf("expected metadata to be appended")
+	}
+}
+
+func TestRunnerShouldHandleChannelMessage(t *testing.T) {
+	runner := &Runner{
+		session: &discordgo.Session{
+			State: &discordgo.State{
+				Ready: discordgo.Ready{
+					User: &discordgo.User{ID: "bot-1"},
+				},
+			},
+		},
+	}
+
+	if !runner.shouldHandleChannelMessage(&discordgo.MessageCreate{
+		Message: &discordgo.Message{GuildID: ""},
+	}) {
+		t.Fatalf("expected DM message to be handled")
+	}
+
+	if runner.shouldHandleChannelMessage(&discordgo.MessageCreate{
+		Message: &discordgo.Message{
+			GuildID: "guild-1",
+			Mentions: []*discordgo.User{
+				{ID: "someone-else"},
+			},
+		},
+	}) {
+		t.Fatalf("expected guild message without bot mention to be ignored")
+	}
+
+	if !runner.shouldHandleChannelMessage(&discordgo.MessageCreate{
+		Message: &discordgo.Message{
+			GuildID: "guild-1",
+			Mentions: []*discordgo.User{
+				{ID: "bot-1"},
+			},
+		},
+	}) {
+		t.Fatalf("expected guild message with bot mention to be handled")
 	}
 }
