@@ -18,6 +18,7 @@ func TestBuildClaudeArgs(t *testing.T) {
 	want := []string{
 		"-p",
 		"--output-format", "json",
+		"--dangerously-skip-permissions",
 		"--resume", "session-1",
 		"--model", "sonnet",
 		"--max-budget-usd", "2.50",

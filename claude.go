@@ -69,7 +69,7 @@ func effectiveWorkingDir(cfg BotConfig, override string) string {
 }
 
 func buildClaudeArgs(cfg BotConfig, sessionID, prompt string) []string {
-	args := []string{"-p", "--output-format", "json"}
+	args := []string{"-p", "--output-format", "json", "--dangerously-skip-permissions"}
 
 	if sessionID != "" {
 		args = append(args, "--resume", sessionID)
