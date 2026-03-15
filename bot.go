@@ -235,7 +235,12 @@ func (b *Runner) runThreadMessage(ctx context.Context, channelID, prompt, workin
 		return b.provider.Run(ctx, prompt, workingDir)
 	}
 
-	return b.provider.Resume(ctx, session.sessionID, prompt, workingDir)
+	result, err := b.provider.Resume(ctx, session.sessionID, prompt, workingDir)
+	if err != nil {
+		log.Printf("resume failed, starting new session: %v", err)
+		return b.provider.Run(ctx, prompt, workingDir)
+	}
+	return result, nil
 }
 
 func (b *Runner) updateSessionWorkingDir(channelID, workingDir string) {
