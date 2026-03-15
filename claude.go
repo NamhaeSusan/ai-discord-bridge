@@ -84,5 +84,6 @@ func buildClaudeArgs(cfg BotConfig, sessionID, prompt string) []string {
 		args = append(args, "--allowedTools", tool)
 	}
 
+	args = append(args, "--")
 	return append(args, prompt)
 }

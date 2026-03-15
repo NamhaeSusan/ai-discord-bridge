@@ -29,6 +29,7 @@ type Runner struct {
 	store     *sessionStore
 	semaphore chan struct{}
 	done      chan struct{}
+	closeOnce sync.Once
 }
 
 func NewBots(cfgs []BotConfig, store *sessionStore) ([]*Runner, error) {
@@ -47,7 +48,7 @@ func NewBots(cfgs []BotConfig, store *sessionStore) ([]*Runner, error) {
 func NewBot(cfg BotConfig, registry *threadRegistry, store *sessionStore) (*Runner, error) {
 	dg, err := discordgo.New("Bot " + cfg.BotToken)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create Discord session for bot %q", cfg.Name)
 	}
 
 	provider, err := NewProvider(cfg)
@@ -82,8 +83,10 @@ func (b *Runner) Open() error {
 }
 
 func (b *Runner) Close() {
-	close(b.done)
-	b.session.Close()
+	b.closeOnce.Do(func() {
+		close(b.done)
+		b.session.Close()
+	})
 }
 
 func (b *Runner) cleanupSessions() {
@@ -287,6 +290,7 @@ func (b *Runner) updateSessionWorkingDir(channelID, workingDir string) {
 	if entry, ok := b.sessions.Load(channelID); ok {
 		updated = entry.(sessionEntry)
 		updated.workingDir = workingDir
+		updated.lastAccessAt = time.Now()
 	} else {
 		updated = sessionEntry{
 			workingDir: workingDir,
