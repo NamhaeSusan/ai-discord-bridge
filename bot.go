@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -122,7 +123,8 @@ func (b *Runner) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreat
 }
 
 func (b *Runner) handleChannelMessage(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate) {
-	workingDir, prompt, err := parseWorkdirDirective(m.Content)
+	content := stripBotMention(m.Content, s.State.User.ID)
+	workingDir, prompt, err := parseWorkdirDirective(content)
 	if err != nil {
 		s.ChannelMessageSend(m.ChannelID, err.Error())
 		return
@@ -176,7 +178,8 @@ func (b *Runner) handleChannelMessage(ctx context.Context, s *discordgo.Session,
 }
 
 func (b *Runner) handleThreadMessage(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate) {
-	workingDir, prompt, err := parseWorkdirDirective(m.Content)
+	content := stripBotMention(m.Content, s.State.User.ID)
+	workingDir, prompt, err := parseWorkdirDirective(content)
 	if err != nil {
 		s.ChannelMessageSend(m.ChannelID, err.Error())
 		return
@@ -284,6 +287,15 @@ func (b *Runner) sendTyping(s *discordgo.Session, channelID string, done <-chan 
 			_ = s.ChannelTyping(channelID)
 		}
 	}
+}
+
+func stripBotMention(content string, botID string) string {
+	for _, prefix := range []string{"<@!" + botID + ">", "<@" + botID + ">"} {
+		if strings.HasPrefix(content, prefix) {
+			return strings.TrimSpace(content[len(prefix):])
+		}
+	}
+	return content
 }
 
 func isThreadChannel(s *discordgo.Session, channelID string) bool {

@@ -268,3 +268,25 @@ func TestParseWorkdirDirectiveChangeOnly(t *testing.T) {
 		t.Fatalf("expected empty prompt, got %q", prompt)
 	}
 }
+
+func TestStripBotMention(t *testing.T) {
+	tests := []struct {
+		content string
+		botID   string
+		want    string
+	}{
+		{"<@123> /cwd .", "123", "/cwd ."},
+		{"<@!123> /cwd .", "123", "/cwd ."},
+		{"<@123> hello world", "123", "hello world"},
+		{"/cwd .", "123", "/cwd ."},
+		{"<@456> /cwd .", "123", "<@456> /cwd ."},
+		{"<@123>", "123", ""},
+	}
+
+	for _, tt := range tests {
+		got := stripBotMention(tt.content, tt.botID)
+		if got != tt.want {
+			t.Errorf("stripBotMention(%q, %q) = %q, want %q", tt.content, tt.botID, got, tt.want)
+		}
+	}
+}
