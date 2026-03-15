@@ -10,8 +10,12 @@ import (
 const maxChunkSize = 2000
 
 func FormatResponse(result *ProviderResult) []string {
-	text := result.Result
+	text := strings.TrimSpace(result.Result)
 	meta := formatResultMeta(result)
+
+	if text == "" {
+		return []string{"No response text was returned.\n\n" + strings.TrimPrefix(meta, "\n\n")}
+	}
 
 	if len(text)+len(meta) <= maxChunkSize {
 		return []string{text + meta}

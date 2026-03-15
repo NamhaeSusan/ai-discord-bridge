@@ -11,9 +11,11 @@ Discord bot that bridges AI CLI tools like Claude Code and Codex to Discord chan
 - TOML config file for multi-bot setup, plus legacy single-bot env overrides
 - Channel/user whitelist filtering
 - Auto-chunking for messages over 2000 characters (with code block split handling)
+- Empty provider output is replaced with a visible fallback message instead of posting metadata only
 - Typing indicator while the provider is running (8s interval)
 - Concurrent execution limit (semaphore, default 5)
 - Session map with TTL-based auto-cleanup (default 60 min)
+- When a session expires, the bot posts a notice in the thread, closes the thread, and notifies the parent channel
 
 ## Requirements
 

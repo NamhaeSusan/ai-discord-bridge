@@ -15,8 +15,8 @@ import (
 )
 
 type sessionEntry struct {
-	sessionID  string
-	workingDir string
+	sessionID    string
+	workingDir   string
 	lastAccessAt time.Time
 }
 
@@ -102,6 +102,7 @@ func (b *Runner) cleanupSessions() {
 			b.sessions.Range(func(key, value any) bool {
 				entry, ok := value.(sessionEntry)
 				if ok && time.Since(entry.lastAccessAt) > ttl {
+					b.notifySessionExpired(key.(string))
 					b.sessions.Delete(key)
 				}
 				return true
@@ -112,6 +113,29 @@ func (b *Runner) cleanupSessions() {
 				}
 			}
 		}
+	}
+}
+
+func (b *Runner) notifySessionExpired(channelID string) {
+	if _, err := b.session.ChannelMessageSend(channelID, "Session expired due to inactivity. Start a new conversation to continue."); err != nil {
+		log.Printf("[%s] notify expired session in thread %s: %v", b.cfg.Name, channelID, err)
+	}
+
+	archived := true
+	locked := true
+	if _, err := b.session.ChannelEdit(channelID, &discordgo.ChannelEdit{
+		Archived: &archived,
+		Locked:   &locked,
+	}); err != nil {
+		log.Printf("[%s] close expired thread %s: %v", b.cfg.Name, channelID, err)
+	}
+
+	ch, err := b.session.Channel(channelID)
+	if err != nil || ch.ParentID == "" {
+		return
+	}
+	if _, err := b.session.ChannelMessageSend(ch.ParentID, fmt.Sprintf("Session in thread <#%s> has expired and the thread was closed.", channelID)); err != nil {
+		log.Printf("[%s] notify parent channel for thread %s: %v", b.cfg.Name, channelID, err)
 	}
 }
 
@@ -293,8 +317,8 @@ func (b *Runner) updateSessionWorkingDir(channelID, workingDir string) {
 		updated.lastAccessAt = time.Now()
 	} else {
 		updated = sessionEntry{
-			workingDir: workingDir,
-			lastAccessAt:  time.Now(),
+			workingDir:   workingDir,
+			lastAccessAt: time.Now(),
 		}
 	}
 	b.sessions.Store(channelID, updated)
@@ -307,9 +331,9 @@ func (b *Runner) updateSessionWorkingDir(channelID, workingDir string) {
 
 func (b *Runner) storeSession(channelID, sessionID, workingDir string) {
 	entry := sessionEntry{
-		sessionID:  sessionID,
-		workingDir: workingDir,
-		lastAccessAt:  time.Now(),
+		sessionID:    sessionID,
+		workingDir:   workingDir,
+		lastAccessAt: time.Now(),
 	}
 	b.sessions.Store(channelID, entry)
 	b.threads.Claim(channelID, b.cfg.Name)
