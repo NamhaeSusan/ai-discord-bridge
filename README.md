@@ -44,7 +44,7 @@ make lint
 make run CONFIG=config/config.toml
 ```
 
-`make run` starts the bot in the background and writes logs to `/tmp/ai-discord-bridge/run.log`.
+`make run` starts the bot in the background and writes logs to `log/run.log`.
 
 ## Configuration
 

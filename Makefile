@@ -2,7 +2,7 @@ APP := ai-discord-bridge
 CONFIG ?= config/config.toml
 GO ?= go
 FMT_FILES := $(shell rg --files -g '*.go')
-LOG_DIR ?= /tmp/ai-discord-bridge
+LOG_DIR ?= log
 RUN_LOG ?= $(LOG_DIR)/run.log
 
 .PHONY: build run test fmt lint clean
