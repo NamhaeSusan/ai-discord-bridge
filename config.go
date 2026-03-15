@@ -191,3 +191,10 @@ func parseIntOrExit(name, value string) int {
 	}
 	return n
 }
+
+func configPathFromEnv(path string) string {
+	if path != "" {
+		return path
+	}
+	return os.Getenv("DISCORD_BOT_CONFIG")
+}

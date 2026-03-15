@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const maxChunkSize = 2000
@@ -48,10 +49,10 @@ func splitIntoChunks(text string) []string {
 			break
 		}
 
-		chunk := remaining[:maxChunkSize]
-		remaining = remaining[maxChunkSize:]
+		splitAt := truncateUTF8(remaining, maxChunkSize)
+		chunk := remaining[:splitAt]
+		remaining = remaining[splitAt:]
 
-		// Handle code block splitting
 		openBlocks := countOpenCodeBlocks(chunk)
 		if openBlocks > 0 {
 			if idx := strings.LastIndex(chunk, "\n"); idx > maxChunkSize/2 {
@@ -70,6 +71,16 @@ func splitIntoChunks(text string) []string {
 	}
 
 	return chunks
+}
+
+func truncateUTF8(s string, maxBytes int) int {
+	if maxBytes >= len(s) {
+		return len(s)
+	}
+	for maxBytes > 0 && !utf8.RuneStart(s[maxBytes]) {
+		maxBytes--
+	}
+	return maxBytes
 }
 
 func countOpenCodeBlocks(s string) int {

@@ -97,7 +97,8 @@ func (b *Runner) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreat
 		return
 	}
 
-	if m.GuildID != "" && isThreadChannel(s, m.ChannelID) {
+	isThread := m.GuildID != "" && isThreadChannel(s, m.ChannelID)
+	if isThread {
 		if !b.shouldHandleThreadMessage(m) {
 			return
 		}
@@ -114,7 +115,7 @@ func (b *Runner) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreat
 	}
 
 	ctx := context.Background()
-	if m.GuildID != "" && isThreadChannel(s, m.ChannelID) {
+	if isThread {
 		b.handleThreadMessage(ctx, s, m)
 		return
 	}
@@ -417,10 +418,10 @@ func (r *threadRegistry) Owner(channelID string) (string, bool) {
 }
 
 func parseWorkdirDirective(content string) (string, string, error) {
-	lines := splitLines(content)
-	if len(lines) == 0 {
+	if content == "" {
 		return "", "", fmt.Errorf("message cannot be empty")
 	}
+	lines := strings.Split(content, "\n")
 
 	first := lines[0]
 	if len(first) == 0 || first[:1] != "/" {
@@ -452,22 +453,6 @@ func parseWorkdirDirective(content string) (string, string, error) {
 	return absDir, prompt, nil
 }
 
-func splitLines(content string) []string {
-	if content == "" {
-		return nil
-	}
-	out := make([]string, 0)
-	start := 0
-	for i := 0; i < len(content); i++ {
-		if content[i] == '\n' {
-			out = append(out, content[start:i])
-			start = i + 1
-		}
-	}
-	out = append(out, content[start:])
-	return out
-}
-
 func joinLines(lines []string) string {
 	for len(lines) > 0 && lines[0] == "" {
 		lines = lines[1:]
@@ -475,13 +460,5 @@ func joinLines(lines []string) string {
 	for len(lines) > 0 && lines[len(lines)-1] == "" {
 		lines = lines[:len(lines)-1]
 	}
-	if len(lines) == 0 {
-		return ""
-	}
-
-	result := lines[0]
-	for i := 1; i < len(lines); i++ {
-		result += "\n" + lines[i]
-	}
-	return result
+	return strings.Join(lines, "\n")
 }

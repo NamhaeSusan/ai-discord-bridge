@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"log"
-	"os"
 	"os/exec"
 	"os/signal"
 	"syscall"
@@ -58,11 +57,4 @@ func ensureCLIs(bots []BotConfig) error {
 	}
 
 	return nil
-}
-
-func configPathFromEnv(path string) string {
-	if path != "" {
-		return path
-	}
-	return os.Getenv("DISCORD_BOT_CONFIG")
 }
