@@ -135,7 +135,10 @@ func (b *Runner) handleChannelMessage(ctx context.Context, s *discordgo.Session,
 		if displayDir == "" {
 			displayDir = b.cfg.WorkingDir
 		}
-		threadName := fmt.Sprintf("/cwd %s", displayDir)
+		threadName := "/cwd"
+		if displayDir != "" {
+			threadName = fmt.Sprintf("/cwd %s", displayDir)
+		}
 		thread, err := s.MessageThreadStartComplex(m.ChannelID, m.ID, &discordgo.ThreadStart{
 			Name:                truncate(threadName, 100),
 			AutoArchiveDuration: 60,
@@ -148,7 +151,8 @@ func (b *Runner) handleChannelMessage(ctx context.Context, s *discordgo.Session,
 			b.storeSession(thread.ID, "", workingDir)
 			s.ChannelMessageSend(thread.ID, fmt.Sprintf("Working directory set to `%s`", workingDir))
 		} else {
-			s.ChannelMessageSend(thread.ID, fmt.Sprintf("Working directory: `%s`", displayDir))
+			b.threads.Claim(thread.ID, b.cfg.Name)
+			s.ChannelMessageSend(thread.ID, cwdDisplayMessage(displayDir))
 		}
 		return
 	}
@@ -191,7 +195,7 @@ func (b *Runner) handleThreadMessage(ctx context.Context, s *discordgo.Session, 
 			if entry, ok := b.sessions.Load(m.ChannelID); ok {
 				displayDir = entry.(sessionEntry).workingDir
 			}
-			s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Working directory: `%s`", displayDir))
+			s.ChannelMessageSend(m.ChannelID, cwdDisplayMessage(displayDir))
 		} else {
 			b.updateSessionWorkingDir(m.ChannelID, workingDir)
 			s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Working directory set to `%s`", workingDir))
@@ -292,6 +296,13 @@ func (b *Runner) sendTyping(s *discordgo.Session, channelID string, done <-chan 
 			_ = s.ChannelTyping(channelID)
 		}
 	}
+}
+
+func cwdDisplayMessage(dir string) string {
+	if dir == "" {
+		return "Working directory not set. Use `/cwd <path>` to set it."
+	}
+	return fmt.Sprintf("Working directory: `%s`", dir)
 }
 
 func stripBotMention(content string, botID string) string {
