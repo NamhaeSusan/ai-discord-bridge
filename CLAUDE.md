@@ -3,6 +3,13 @@
 ## Overview
 Discord 봇으로 AI CLI 도구 (Claude Code 등)를 Discord 채널에서 사용할 수 있게 하는 브릿지.
 
+## Features
+
+- Discord 채널 메시지를 Claude/Codex CLI 실행으로 연결
+- 생성된 thread에서 동일 세션 이어쓰기
+- `/cwd` 명령어로 작업 디렉터리 조회, `/cwd <path>`로 변경 (프롬프트 없이도 사용 가능)
+- thread별 작업 디렉터리 세션 저장 및 재사용
+
 ## Architecture
 
 ```

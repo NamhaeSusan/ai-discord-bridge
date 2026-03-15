@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"slices"
 	"sync"
 	"time"
@@ -12,8 +14,9 @@ import (
 )
 
 type sessionEntry struct {
-	sessionID string
-	createdAt time.Time
+	sessionID  string
+	workingDir string
+	createdAt  time.Time
 }
 
 type Runner struct {
@@ -119,8 +122,37 @@ func (b *Runner) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreat
 }
 
 func (b *Runner) handleChannelMessage(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate) {
+	workingDir, prompt, err := parseWorkdirDirective(m.Content)
+	if err != nil {
+		s.ChannelMessageSend(m.ChannelID, err.Error())
+		return
+	}
+
+	if prompt == "" {
+		displayDir := workingDir
+		if displayDir == "" {
+			displayDir = b.cfg.WorkingDir
+		}
+		threadName := fmt.Sprintf("/cwd %s", displayDir)
+		thread, err := s.MessageThreadStartComplex(m.ChannelID, m.ID, &discordgo.ThreadStart{
+			Name:                truncate(threadName, 100),
+			AutoArchiveDuration: 60,
+		})
+		if err != nil {
+			log.Printf("[%s] create thread: %v", b.cfg.Name, err)
+			return
+		}
+		if workingDir != "" {
+			b.storeSession(thread.ID, "", workingDir)
+			s.ChannelMessageSend(thread.ID, fmt.Sprintf("Working directory set to `%s`", workingDir))
+		} else {
+			s.ChannelMessageSend(thread.ID, fmt.Sprintf("Working directory: `%s`", displayDir))
+		}
+		return
+	}
+
 	thread, err := s.MessageThreadStartComplex(m.ChannelID, m.ID, &discordgo.ThreadStart{
-		Name:                truncate(m.Content, 100),
+		Name:                truncate(prompt, 100),
 		AutoArchiveDuration: 60,
 	})
 	if err != nil {
@@ -131,7 +163,7 @@ func (b *Runner) handleChannelMessage(ctx context.Context, s *discordgo.Session,
 	done := make(chan struct{})
 	go b.sendTyping(s, thread.ID, done)
 
-	result, err := b.provider.Run(ctx, m.Content)
+	result, err := b.provider.Run(ctx, prompt, workingDir)
 	close(done)
 	if err != nil {
 		log.Printf("[%s] provider error for user %s: %v", b.cfg.Name, m.Author.ID, err)
@@ -140,14 +172,34 @@ func (b *Runner) handleChannelMessage(ctx context.Context, s *discordgo.Session,
 	}
 
 	b.sendChunks(s, thread.ID, result)
-	b.storeSession(thread.ID, result.SessionID)
+	b.storeSession(thread.ID, result.SessionID, workingDir)
 }
 
 func (b *Runner) handleThreadMessage(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate) {
+	workingDir, prompt, err := parseWorkdirDirective(m.Content)
+	if err != nil {
+		s.ChannelMessageSend(m.ChannelID, err.Error())
+		return
+	}
+
+	if prompt == "" {
+		if workingDir == "" {
+			displayDir := b.cfg.WorkingDir
+			if entry, ok := b.sessions.Load(m.ChannelID); ok {
+				displayDir = entry.(sessionEntry).workingDir
+			}
+			s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Working directory: `%s`", displayDir))
+		} else {
+			b.updateSessionWorkingDir(m.ChannelID, workingDir)
+			s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Working directory set to `%s`", workingDir))
+		}
+		return
+	}
+
 	done := make(chan struct{})
 	go b.sendTyping(s, m.ChannelID, done)
 
-	result, err := b.runThreadMessage(ctx, m.ChannelID, m.Content)
+	result, err := b.runThreadMessage(ctx, m.ChannelID, prompt, workingDir)
 	close(done)
 	if err != nil {
 		log.Printf("[%s] provider error for user %s: %v", b.cfg.Name, m.Author.ID, err)
@@ -156,27 +208,45 @@ func (b *Runner) handleThreadMessage(ctx context.Context, s *discordgo.Session, 
 	}
 
 	b.sendChunks(s, m.ChannelID, result)
-	b.storeSession(m.ChannelID, result.SessionID)
+	b.storeSession(m.ChannelID, result.SessionID, workingDir)
 }
 
-func (b *Runner) runThreadMessage(ctx context.Context, channelID, prompt string) (*ProviderResult, error) {
+func (b *Runner) runThreadMessage(ctx context.Context, channelID, prompt, workingDir string) (*ProviderResult, error) {
 	entry, ok := b.sessions.Load(channelID)
 	if !ok {
-		return b.provider.Run(ctx, prompt)
+		return b.provider.Run(ctx, prompt, workingDir)
 	}
 
 	session := entry.(sessionEntry)
+	if workingDir == "" {
+		workingDir = session.workingDir
+	}
 	if session.sessionID == "" {
-		return b.provider.Run(ctx, prompt)
+		return b.provider.Run(ctx, prompt, workingDir)
 	}
 
-	return b.provider.Resume(ctx, session.sessionID, prompt)
+	return b.provider.Resume(ctx, session.sessionID, prompt, workingDir)
 }
 
-func (b *Runner) storeSession(channelID, sessionID string) {
+func (b *Runner) updateSessionWorkingDir(channelID, workingDir string) {
+	entry, ok := b.sessions.Load(channelID)
+	if ok {
+		session := entry.(sessionEntry)
+		session.workingDir = workingDir
+		b.sessions.Store(channelID, session)
+	} else {
+		b.sessions.Store(channelID, sessionEntry{
+			workingDir: workingDir,
+			createdAt:  time.Now(),
+		})
+	}
+}
+
+func (b *Runner) storeSession(channelID, sessionID, workingDir string) {
 	b.sessions.Store(channelID, sessionEntry{
-		sessionID: sessionID,
-		createdAt: time.Now(),
+		sessionID:  sessionID,
+		workingDir: workingDir,
+		createdAt:  time.Now(),
 	})
 	b.threads.Claim(channelID, b.cfg.Name)
 }
@@ -309,4 +379,74 @@ func (r *threadRegistry) Owner(channelID string) (string, bool) {
 	}
 
 	return name, true
+}
+
+func parseWorkdirDirective(content string) (string, string, error) {
+	lines := splitLines(content)
+	if len(lines) == 0 {
+		return "", "", fmt.Errorf("message cannot be empty")
+	}
+
+	first := lines[0]
+	if len(first) == 0 || first[:1] != "/" {
+		return "", content, nil
+	}
+
+	const prefix = "/cwd "
+	if first == "/cwd" {
+		return "", "", nil
+	}
+	if len(first) < len(prefix) || first[:len(prefix)] != prefix {
+		return "", content, nil
+	}
+
+	dir := first[len(prefix):]
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return "", "", fmt.Errorf("invalid `/cwd` path: %v", err)
+	}
+	info, err := os.Stat(absDir)
+	if err != nil {
+		return "", "", fmt.Errorf("working directory not found: `%s`", absDir)
+	}
+	if !info.IsDir() {
+		return "", "", fmt.Errorf("working directory is not a directory: `%s`", absDir)
+	}
+
+	prompt := joinLines(lines[1:])
+	return absDir, prompt, nil
+}
+
+func splitLines(content string) []string {
+	if content == "" {
+		return nil
+	}
+	out := make([]string, 0)
+	start := 0
+	for i := 0; i < len(content); i++ {
+		if content[i] == '\n' {
+			out = append(out, content[start:i])
+			start = i + 1
+		}
+	}
+	out = append(out, content[start:])
+	return out
+}
+
+func joinLines(lines []string) string {
+	for len(lines) > 0 && lines[0] == "" {
+		lines = lines[1:]
+	}
+	for len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+
+	result := lines[0]
+	for i := 1; i < len(lines); i++ {
+		result += "\n" + lines[i]
+	}
+	return result
 }

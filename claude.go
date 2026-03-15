@@ -19,22 +19,22 @@ type claudeOutput struct {
 	CostUSD   float64 `json:"cost_usd"`
 }
 
-func (p ClaudeProvider) Run(ctx context.Context, prompt string) (*ProviderResult, error) {
-	return p.run(ctx, "", prompt)
+func (p ClaudeProvider) Run(ctx context.Context, prompt, workingDir string) (*ProviderResult, error) {
+	return p.run(ctx, "", prompt, workingDir)
 }
 
-func (p ClaudeProvider) Resume(ctx context.Context, sessionID, prompt string) (*ProviderResult, error) {
-	return p.run(ctx, sessionID, prompt)
+func (p ClaudeProvider) Resume(ctx context.Context, sessionID, prompt, workingDir string) (*ProviderResult, error) {
+	return p.run(ctx, sessionID, prompt, workingDir)
 }
 
-func (p ClaudeProvider) run(ctx context.Context, sessionID, prompt string) (*ProviderResult, error) {
+func (p ClaudeProvider) run(ctx context.Context, sessionID, prompt, workingDir string) (*ProviderResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(p.cfg.TimeoutSeconds)*time.Second)
 	defer cancel()
 
 	start := time.Now()
 	cmd := exec.CommandContext(ctx, "claude", buildClaudeArgs(p.cfg, sessionID, prompt)...)
-	if p.cfg.WorkingDir != "" {
-		cmd.Dir = p.cfg.WorkingDir
+	if dir := effectiveWorkingDir(p.cfg, workingDir); dir != "" {
+		cmd.Dir = dir
 	}
 
 	var stderr bytes.Buffer
@@ -59,6 +59,13 @@ func (p ClaudeProvider) run(ctx context.Context, sessionID, prompt string) (*Pro
 		HasCost:   true,
 		Duration:  duration,
 	}, nil
+}
+
+func effectiveWorkingDir(cfg BotConfig, override string) string {
+	if override != "" {
+		return override
+	}
+	return cfg.WorkingDir
 }
 
 func buildClaudeArgs(cfg BotConfig, sessionID, prompt string) []string {

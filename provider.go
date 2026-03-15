@@ -7,8 +7,8 @@ import (
 )
 
 type Provider interface {
-	Run(ctx context.Context, prompt string) (*ProviderResult, error)
-	Resume(ctx context.Context, sessionID, prompt string) (*ProviderResult, error)
+	Run(ctx context.Context, prompt, workingDir string) (*ProviderResult, error)
+	Resume(ctx context.Context, sessionID, prompt, workingDir string) (*ProviderResult, error)
 }
 
 type ProviderResult struct {

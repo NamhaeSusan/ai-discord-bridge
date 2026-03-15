@@ -38,7 +38,7 @@ func TestBuildCodexArgs(t *testing.T) {
 		Sandbox:    "danger-full-access",
 	}
 
-	got := buildCodexArgs(cfg, false, "", "ship it", "/tmp/out")
+	got := buildCodexArgs(cfg, false, "", "ship it", "/tmp/out", "")
 	want := []string{
 		"exec",
 		"-C", "/repo",
@@ -60,7 +60,7 @@ func TestBuildCodexResumeArgs(t *testing.T) {
 		Sandbox: "danger-full-access",
 	}
 
-	got := buildCodexArgs(cfg, true, "thread-1", "ship it", "/tmp/out")
+	got := buildCodexArgs(cfg, true, "thread-1", "ship it", "/tmp/out", "")
 	want := []string{
 		"exec",
 		"resume",
@@ -68,6 +68,29 @@ func TestBuildCodexResumeArgs(t *testing.T) {
 		"-o", "/tmp/out",
 		"-m", "gpt-5-codex",
 		"thread-1",
+		"ship it",
+	}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("buildCodexArgs mismatch\nwant: %#v\ngot:  %#v", want, got)
+	}
+}
+
+func TestBuildCodexArgsWithOverrideWorkingDir(t *testing.T) {
+	cfg := BotConfig{
+		WorkingDir: "/repo",
+		Model:      "gpt-5-codex",
+		Sandbox:    "danger-full-access",
+	}
+
+	got := buildCodexArgs(cfg, false, "", "ship it", "/tmp/out", "/other")
+	want := []string{
+		"exec",
+		"-C", "/other",
+		"-m", "gpt-5-codex",
+		"--sandbox", "danger-full-access",
+		"--json",
+		"-o", "/tmp/out",
 		"ship it",
 	}
 
@@ -191,5 +214,57 @@ func TestRunnerShouldHandleThreadMessage(t *testing.T) {
 		},
 	}) {
 		t.Fatalf("expected unclaimed thread with bot mention to be handled")
+	}
+}
+
+func TestParseWorkdirDirectiveWithoutDirective(t *testing.T) {
+	dir, prompt, err := parseWorkdirDirective("ship it")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if dir != "" {
+		t.Fatalf("expected empty dir, got %q", dir)
+	}
+	if prompt != "ship it" {
+		t.Fatalf("expected original prompt, got %q", prompt)
+	}
+}
+
+func TestParseWorkdirDirectiveWithDirective(t *testing.T) {
+	dir, prompt, err := parseWorkdirDirective("/cwd .\n\nship it")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if dir == "" {
+		t.Fatalf("expected working dir to be resolved")
+	}
+	if prompt != "ship it" {
+		t.Fatalf("expected trimmed prompt, got %q", prompt)
+	}
+}
+
+func TestParseWorkdirDirectiveShowCwd(t *testing.T) {
+	dir, prompt, err := parseWorkdirDirective("/cwd")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if dir != "" {
+		t.Fatalf("expected empty dir, got %q", dir)
+	}
+	if prompt != "" {
+		t.Fatalf("expected empty prompt, got %q", prompt)
+	}
+}
+
+func TestParseWorkdirDirectiveChangeOnly(t *testing.T) {
+	dir, prompt, err := parseWorkdirDirective("/cwd .")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if dir == "" {
+		t.Fatalf("expected working dir to be resolved")
+	}
+	if prompt != "" {
+		t.Fatalf("expected empty prompt, got %q", prompt)
 	}
 }

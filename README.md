@@ -7,6 +7,7 @@ Discord bot that bridges AI CLI tools like Claude Code and Codex to Discord chan
 - Run multiple Discord bots from one process
 - Send Discord messages to Claude or Codex and continue in the created thread
 - Reply in a thread to resume the same Claude or Codex session
+- Override the working directory per thread with a `/cwd <path>` first line
 - TOML config file for multi-bot setup, plus legacy single-bot env overrides
 - Channel/user whitelist filtering
 - Auto-chunking for messages over 2000 characters (with code block split handling)
@@ -53,6 +54,18 @@ Each bot uses one `[[bots]]` entry:
 | `sandbox` | Codex-only sandbox mode (default: `danger-full-access`) |
 
 Legacy top-level Claude config and env overrides still work for a single-bot setup. The new multi-bot format is TOML-first.
+
+### Per-thread working directory override
+
+You can start a thread in a different repository by putting `/cwd <path>` on the first line:
+
+```text
+/cwd /Users/kimtaeyun/trelab-workspace/trelab-drb/trelab-drb-server
+
+PostgreSQL support work 이어서
+```
+
+The parsed directory is stored for that Discord thread and reused on follow-up replies.
 
 Example:
 

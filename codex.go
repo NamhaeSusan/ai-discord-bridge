@@ -24,15 +24,15 @@ type codexEvent struct {
 	} `json:"item"`
 }
 
-func (p CodexProvider) Run(ctx context.Context, prompt string) (*ProviderResult, error) {
-	return p.run(ctx, false, "", prompt)
+func (p CodexProvider) Run(ctx context.Context, prompt, workingDir string) (*ProviderResult, error) {
+	return p.run(ctx, false, "", prompt, workingDir)
 }
 
-func (p CodexProvider) Resume(ctx context.Context, sessionID, prompt string) (*ProviderResult, error) {
-	return p.run(ctx, true, sessionID, prompt)
+func (p CodexProvider) Resume(ctx context.Context, sessionID, prompt, workingDir string) (*ProviderResult, error) {
+	return p.run(ctx, true, sessionID, prompt, workingDir)
 }
 
-func (p CodexProvider) run(ctx context.Context, resume bool, sessionID, prompt string) (*ProviderResult, error) {
+func (p CodexProvider) run(ctx context.Context, resume bool, sessionID, prompt, workingDir string) (*ProviderResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(p.cfg.TimeoutSeconds)*time.Second)
 	defer cancel()
 
@@ -42,7 +42,7 @@ func (p CodexProvider) run(ctx context.Context, resume bool, sessionID, prompt s
 	}
 	defer os.Remove(outputPath)
 
-	args := buildCodexArgs(p.cfg, resume, sessionID, prompt, outputPath)
+	args := buildCodexArgs(p.cfg, resume, sessionID, prompt, outputPath, workingDir)
 	cmd := exec.CommandContext(ctx, "codex", args...)
 
 	var stdout bytes.Buffer
@@ -76,8 +76,11 @@ func (p CodexProvider) run(ctx context.Context, resume bool, sessionID, prompt s
 	}, nil
 }
 
-func buildCodexArgs(cfg BotConfig, resume bool, sessionID, prompt, outputPath string) []string {
+func buildCodexArgs(cfg BotConfig, resume bool, sessionID, prompt, outputPath, workingDir string) []string {
 	args := []string{"exec"}
+	if dir := effectiveWorkingDir(cfg, workingDir); dir != "" {
+		args = append(args, "-C", dir)
+	}
 	if resume {
 		args = append(args, "resume", "--json", "-o", outputPath)
 		if cfg.Model != "" {
@@ -87,9 +90,6 @@ func buildCodexArgs(cfg BotConfig, resume bool, sessionID, prompt, outputPath st
 		return append(args, prompt)
 	}
 
-	if cfg.WorkingDir != "" {
-		args = append(args, "-C", cfg.WorkingDir)
-	}
 	if cfg.Model != "" {
 		args = append(args, "-m", cfg.Model)
 	}
