@@ -172,7 +172,7 @@ func TestRunnerShouldHandleChannelMessage(t *testing.T) {
 }
 
 func TestRunnerShouldHandleThreadMessage(t *testing.T) {
-	registry := newThreadRegistry()
+	registry := newThreadRegistry(nil)
 	registry.Claim("thread-1", "claude")
 
 	runner := &Runner{
