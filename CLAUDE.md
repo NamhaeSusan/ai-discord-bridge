@@ -10,6 +10,8 @@ Discord 봇으로 AI CLI 도구 (Claude Code 등)를 Discord 채널에서 사용
 - `/cwd` 명령어로 작업 디렉터리 조회, `/cwd <path>`로 변경 (프롬프트 없이도 사용 가능)
 - thread별 작업 디렉터리 세션 저장 및 재사용
 - bbolt 기반 세션 영속화 (재시작 후에도 thread-session 매핑 유지)
+- 세션 만료 시 thread 안내 메시지 전송, thread 자동 종료, 부모 채널 알림
+- provider 응답이 비어 있을 때 메타데이터만 보내지 않고 fallback 메시지 전송
 
 ## Architecture
 

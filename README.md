@@ -11,9 +11,11 @@ Discord bot that bridges AI CLI tools like Claude Code and Codex to Discord chan
 - TOML config file for multi-bot setup, plus legacy single-bot env overrides
 - Channel/user whitelist filtering
 - Auto-chunking for messages over 2000 characters (with code block split handling)
+- Empty provider output is replaced with a visible fallback message instead of posting metadata only
 - Typing indicator while the provider is running (8s interval)
 - Concurrent execution limit (semaphore, default 5)
 - Session map with TTL-based auto-cleanup (default 60 min)
+- When a session expires, the bot posts a notice in the thread, closes the thread, and notifies the parent channel
 
 ## Requirements
 
@@ -32,6 +34,15 @@ cp config/config.example.toml config/config.toml
 ```
 
 4. Fill in one or more `[[bots]]` entries
+
+You can also use the included `Makefile` for common tasks:
+
+```bash
+make build
+make test
+make lint
+make run CONFIG=config/config.toml
+```
 
 ## Configuration
 
@@ -93,12 +104,18 @@ sandbox = "danger-full-access"
 # With config file
 go run . -config config/config.toml
 
+# With Makefile
+make run CONFIG=config/config.toml
+
 # With environment variables
 DISCORD_BOT_TOKEN=xxx go run .
 
 # Build and run
 go build -o ai-discord-bridge .
 ./ai-discord-bridge -config config/config.toml
+
+# Build via Makefile
+make build
 ```
 
 ## License

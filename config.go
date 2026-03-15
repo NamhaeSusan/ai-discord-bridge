@@ -60,7 +60,9 @@ func LoadConfig(path string) (*Config, error) {
 		}
 	}
 
-	applyLegacyEnvOverrides(cfg)
+	if err := applyLegacyEnvOverrides(cfg); err != nil {
+		return nil, err
+	}
 	cfg.normalize()
 	if err := cfg.validate(); err != nil {
 		return nil, err
@@ -69,7 +71,7 @@ func LoadConfig(path string) (*Config, error) {
 	return cfg, nil
 }
 
-func applyLegacyEnvOverrides(cfg *Config) {
+func applyLegacyEnvOverrides(cfg *Config) error {
 	if v := os.Getenv("DISCORD_BOT_TOKEN"); v != "" {
 		cfg.BotToken = v
 	}
@@ -89,11 +91,20 @@ func applyLegacyEnvOverrides(cfg *Config) {
 		cfg.ClaudeAllowedTools = splitCSV(v)
 	}
 	if v := os.Getenv("CLAUDE_MAX_BUDGET_USD"); v != "" {
-		cfg.ClaudeMaxBudgetUSD = parseFloatOrExit("CLAUDE_MAX_BUDGET_USD", v)
+		f, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return fmt.Errorf("invalid CLAUDE_MAX_BUDGET_USD: %w", err)
+		}
+		cfg.ClaudeMaxBudgetUSD = f
 	}
 	if v := os.Getenv("CLAUDE_TIMEOUT_SECONDS"); v != "" {
-		cfg.ClaudeTimeoutSeconds = parseIntOrExit("CLAUDE_TIMEOUT_SECONDS", v)
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return fmt.Errorf("invalid CLAUDE_TIMEOUT_SECONDS: %w", err)
+		}
+		cfg.ClaudeTimeoutSeconds = n
 	}
+	return nil
 }
 
 func (c *Config) normalize() {
@@ -178,24 +189,6 @@ func splitCSV(v string) []string {
 		}
 	}
 	return out
-}
-
-func parseFloatOrExit(name, value string) float64 {
-	f, err := strconv.ParseFloat(value, 64)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "invalid %s: %v\n", name, err)
-		os.Exit(1)
-	}
-	return f
-}
-
-func parseIntOrExit(name, value string) int {
-	n, err := strconv.Atoi(value)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "invalid %s: %v\n", name, err)
-		os.Exit(1)
-	}
-	return n
 }
 
 func configPathFromEnv(path string) string {

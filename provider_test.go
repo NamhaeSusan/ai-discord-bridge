@@ -2,6 +2,7 @@ package main
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/bwmarrin/discordgo"
@@ -24,6 +25,7 @@ func TestBuildClaudeArgs(t *testing.T) {
 		"--max-budget-usd", "2.50",
 		"--allowedTools", "Read",
 		"--allowedTools", "Grep",
+		"--",
 		"hello",
 	}
 
@@ -47,6 +49,7 @@ func TestBuildCodexArgs(t *testing.T) {
 		"--sandbox", "danger-full-access",
 		"--json",
 		"-o", "/tmp/out",
+		"--",
 		"ship it",
 	}
 
@@ -69,6 +72,7 @@ func TestBuildCodexResumeArgs(t *testing.T) {
 		"-o", "/tmp/out",
 		"-m", "gpt-5-codex",
 		"thread-1",
+		"--",
 		"ship it",
 	}
 
@@ -92,6 +96,7 @@ func TestBuildCodexArgsWithOverrideWorkingDir(t *testing.T) {
 		"--sandbox", "danger-full-access",
 		"--json",
 		"-o", "/tmp/out",
+		"--",
 		"ship it",
 	}
 
@@ -128,6 +133,24 @@ func TestFormatResponseWithoutCost(t *testing.T) {
 	}
 	if chunks[0] == "hello" {
 		t.Fatalf("expected metadata to be appended")
+	}
+}
+
+func TestFormatResponseWithEmptyResult(t *testing.T) {
+	result := &ProviderResult{
+		Provider: "claude",
+		Result:   " \n\t",
+	}
+
+	chunks := FormatResponse(result)
+	if len(chunks) != 1 {
+		t.Fatalf("expected single chunk, got %d", len(chunks))
+	}
+	if got := chunks[0]; got == "" || got == "\n\n" {
+		t.Fatalf("expected fallback message, got %q", got)
+	}
+	if want := "No response text was returned."; !strings.HasPrefix(chunks[0], want) {
+		t.Fatalf("expected fallback prefix %q, got %q", want, chunks[0])
 	}
 }
 

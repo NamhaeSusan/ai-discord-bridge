@@ -33,12 +33,19 @@ func main() {
 		log.Fatal("failed to create bots: ", err)
 	}
 
-	for _, bot := range bots {
+	for i, bot := range bots {
 		if err := bot.Open(); err != nil {
+			for j := range i {
+				bots[j].Close()
+			}
 			log.Fatal("failed to open bot session: ", err)
 		}
-		defer bot.Close()
 	}
+	defer func() {
+		for _, bot := range bots {
+			bot.Close()
+		}
+	}()
 
 	log.Printf("%d Discord bot(s) running. Press Ctrl+C to stop.", len(bots))
 

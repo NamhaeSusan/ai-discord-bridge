@@ -87,6 +87,7 @@ func buildCodexArgs(cfg BotConfig, resume bool, sessionID, prompt, outputPath, w
 			args = append(args, "-m", cfg.Model)
 		}
 		args = append(args, sessionID)
+		args = append(args, "--")
 		return append(args, prompt)
 	}
 
@@ -97,7 +98,7 @@ func buildCodexArgs(cfg BotConfig, resume bool, sessionID, prompt, outputPath, w
 		args = append(args, "--sandbox", cfg.Sandbox)
 	}
 
-	args = append(args, "--json", "-o", outputPath)
+	args = append(args, "--json", "-o", outputPath, "--")
 	return append(args, prompt)
 }
 
