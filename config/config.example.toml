@@ -2,6 +2,9 @@
 # Copy to config.toml and fill in values.
 # Usage: go run . -config config/config.toml
 
+# Session persistence (bbolt). Stores thread-session mappings across restarts.
+# db_path = "./sessions.db"
+
 [[bots]]
 name = "claude"
 provider = "claude"

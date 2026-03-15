@@ -26,14 +26,15 @@ type Runner struct {
 	provider  Provider
 	threads   *threadRegistry
 	sessions  sync.Map
+	store     *sessionStore
 	semaphore chan struct{}
 }
 
-func NewBots(cfgs []BotConfig) ([]*Runner, error) {
-	registry := newThreadRegistry()
+func NewBots(cfgs []BotConfig, store *sessionStore) ([]*Runner, error) {
+	registry := newThreadRegistry(store)
 	bots := make([]*Runner, 0, len(cfgs))
 	for _, cfg := range cfgs {
-		bot, err := NewBot(cfg, registry)
+		bot, err := NewBot(cfg, registry, store)
 		if err != nil {
 			return nil, err
 		}
@@ -42,7 +43,7 @@ func NewBots(cfgs []BotConfig) ([]*Runner, error) {
 	return bots, nil
 }
 
-func NewBot(cfg BotConfig, registry *threadRegistry) (*Runner, error) {
+func NewBot(cfg BotConfig, registry *threadRegistry, store *sessionStore) (*Runner, error) {
 	dg, err := discordgo.New("Bot " + cfg.BotToken)
 	if err != nil {
 		return nil, err
@@ -60,6 +61,7 @@ func NewBot(cfg BotConfig, registry *threadRegistry) (*Runner, error) {
 		cfg:       cfg,
 		provider:  provider,
 		threads:   registry,
+		store:     store,
 		semaphore: make(chan struct{}, cfg.MaxConcurrent),
 	}
 
@@ -68,6 +70,11 @@ func NewBot(cfg BotConfig, registry *threadRegistry) (*Runner, error) {
 }
 
 func (b *Runner) Open() error {
+	if b.store != nil {
+		for ch, entry := range b.store.AllSessions(b.cfg.Name) {
+			b.sessions.Store(ch, entry)
+		}
+	}
 	go b.cleanupSessions()
 	return b.session.Open()
 }
@@ -89,6 +96,11 @@ func (b *Runner) cleanupSessions() {
 			}
 			return true
 		})
+		if b.store != nil {
+			if err := b.store.PurgeExpiredSessions(b.cfg.Name, ttl); err != nil {
+				log.Printf("[%s] purge expired sessions: %v", b.cfg.Name, err)
+			}
+		}
 	}
 }
 
@@ -249,26 +261,37 @@ func (b *Runner) runThreadMessage(ctx context.Context, channelID, prompt, workin
 }
 
 func (b *Runner) updateSessionWorkingDir(channelID, workingDir string) {
-	entry, ok := b.sessions.Load(channelID)
-	if ok {
-		session := entry.(sessionEntry)
-		session.workingDir = workingDir
-		b.sessions.Store(channelID, session)
+	var updated sessionEntry
+	if entry, ok := b.sessions.Load(channelID); ok {
+		updated = entry.(sessionEntry)
+		updated.workingDir = workingDir
 	} else {
-		b.sessions.Store(channelID, sessionEntry{
+		updated = sessionEntry{
 			workingDir: workingDir,
 			createdAt:  time.Now(),
-		})
+		}
+	}
+	b.sessions.Store(channelID, updated)
+	if b.store != nil {
+		if err := b.store.PutSession(b.cfg.Name, channelID, updated); err != nil {
+			log.Printf("[%s] persist session: %v", b.cfg.Name, err)
+		}
 	}
 }
 
 func (b *Runner) storeSession(channelID, sessionID, workingDir string) {
-	b.sessions.Store(channelID, sessionEntry{
+	entry := sessionEntry{
 		sessionID:  sessionID,
 		workingDir: workingDir,
 		createdAt:  time.Now(),
-	})
+	}
+	b.sessions.Store(channelID, entry)
 	b.threads.Claim(channelID, b.cfg.Name)
+	if b.store != nil {
+		if err := b.store.PutSession(b.cfg.Name, channelID, entry); err != nil {
+			log.Printf("[%s] persist session: %v", b.cfg.Name, err)
+		}
+	}
 }
 
 func (b *Runner) sendChunks(s *discordgo.Session, channelID string, result *ProviderResult) {
@@ -384,11 +407,18 @@ func (b *Runner) shouldHandleThreadMessage(m *discordgo.MessageCreate) bool {
 }
 
 type threadRegistry struct {
-	m sync.Map
+	m     sync.Map
+	store *sessionStore
 }
 
-func newThreadRegistry() *threadRegistry {
-	return &threadRegistry{}
+func newThreadRegistry(store *sessionStore) *threadRegistry {
+	r := &threadRegistry{store: store}
+	if store != nil {
+		for ch, owner := range store.AllThreads() {
+			r.m.Store(ch, owner)
+		}
+	}
+	return r
 }
 
 func (r *threadRegistry) Claim(channelID, botName string) {
@@ -397,6 +427,11 @@ func (r *threadRegistry) Claim(channelID, botName string) {
 	}
 
 	r.m.Store(channelID, botName)
+	if r.store != nil {
+		if err := r.store.PutThread(channelID, botName); err != nil {
+			log.Printf("persist thread ownership: %v", err)
+		}
+	}
 }
 
 func (r *threadRegistry) Owner(channelID string) (string, bool) {

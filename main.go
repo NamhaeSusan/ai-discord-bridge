@@ -22,7 +22,13 @@ func main() {
 		log.Fatal(err)
 	}
 
-	bots, err := NewBots(cfg.Bots)
+	store, err := OpenStore(cfg.DBPath)
+	if err != nil {
+		log.Fatal("failed to open session store: ", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	bots, err := NewBots(cfg.Bots, store)
 	if err != nil {
 		log.Fatal("failed to create bots: ", err)
 	}

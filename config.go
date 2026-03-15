@@ -15,10 +15,12 @@ const (
 	defaultMaxConcurrent  = 5
 	defaultSessionTTL     = 60
 	defaultCodexSandbox   = "danger-full-access"
+	defaultDBPath         = "./sessions.db"
 )
 
 type Config struct {
-	Bots []BotConfig `toml:"bots"`
+	Bots   []BotConfig `toml:"bots"`
+	DBPath string      `toml:"db_path"`
 
 	BotToken             string   `toml:"bot_token"`
 	AllowedChannels      []string `toml:"allowed_channels"`
@@ -110,6 +112,10 @@ func (c *Config) normalize() {
 			MaxBudgetUSD:      c.ClaudeMaxBudgetUSD,
 			AllowedTools:      append([]string(nil), c.ClaudeAllowedTools...),
 		}}
+	}
+
+	if c.DBPath == "" {
+		c.DBPath = defaultDBPath
 	}
 
 	for i := range c.Bots {
