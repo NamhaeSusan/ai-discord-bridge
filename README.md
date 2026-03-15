@@ -35,6 +35,15 @@ cp config/config.example.toml config/config.toml
 
 4. Fill in one or more `[[bots]]` entries
 
+You can also use the included `Makefile` for common tasks:
+
+```bash
+make build
+make test
+make lint
+make run CONFIG=config/config.toml
+```
+
 ## Configuration
 
 Each bot uses one `[[bots]]` entry:
@@ -95,12 +104,18 @@ sandbox = "danger-full-access"
 # With config file
 go run . -config config/config.toml
 
+# With Makefile
+make run CONFIG=config/config.toml
+
 # With environment variables
 DISCORD_BOT_TOKEN=xxx go run .
 
 # Build and run
 go build -o ai-discord-bridge .
 ./ai-discord-bridge -config config/config.toml
+
+# Build via Makefile
+make build
 ```
 
 ## License

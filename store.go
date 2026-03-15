@@ -47,8 +47,8 @@ func sessionBucketName(botName string) []byte {
 
 func (s *sessionStore) PutSession(botName, channelID string, entry sessionEntry) error {
 	data, err := json.Marshal(storedSession{
-		SessionID:  entry.sessionID,
-		WorkingDir: entry.workingDir,
+		SessionID:    entry.sessionID,
+		WorkingDir:   entry.workingDir,
 		LastAccessAt: entry.lastAccessAt,
 	})
 	if err != nil {
