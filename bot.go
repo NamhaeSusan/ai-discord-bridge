@@ -208,7 +208,14 @@ func (b *Runner) handleThreadMessage(ctx context.Context, s *discordgo.Session, 
 	}
 
 	b.sendChunks(s, m.ChannelID, result)
-	b.storeSession(m.ChannelID, result.SessionID, workingDir)
+
+	effectiveDir := workingDir
+	if effectiveDir == "" {
+		if entry, ok := b.sessions.Load(m.ChannelID); ok {
+			effectiveDir = entry.(sessionEntry).workingDir
+		}
+	}
+	b.storeSession(m.ChannelID, result.SessionID, effectiveDir)
 }
 
 func (b *Runner) runThreadMessage(ctx context.Context, channelID, prompt, workingDir string) (*ProviderResult, error) {
