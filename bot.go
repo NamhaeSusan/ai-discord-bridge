@@ -17,7 +17,7 @@ import (
 type sessionEntry struct {
 	sessionID  string
 	workingDir string
-	createdAt  time.Time
+	lastAccessAt time.Time
 }
 
 type Runner struct {
@@ -28,6 +28,7 @@ type Runner struct {
 	sessions  sync.Map
 	store     *sessionStore
 	semaphore chan struct{}
+	done      chan struct{}
 }
 
 func NewBots(cfgs []BotConfig, store *sessionStore) ([]*Runner, error) {
@@ -63,6 +64,7 @@ func NewBot(cfg BotConfig, registry *threadRegistry, store *sessionStore) (*Runn
 		threads:   registry,
 		store:     store,
 		semaphore: make(chan struct{}, cfg.MaxConcurrent),
+		done:      make(chan struct{}),
 	}
 
 	dg.AddHandler(bot.onMessageCreate)
@@ -80,6 +82,7 @@ func (b *Runner) Open() error {
 }
 
 func (b *Runner) Close() {
+	close(b.done)
 	b.session.Close()
 }
 
@@ -88,17 +91,22 @@ func (b *Runner) cleanupSessions() {
 	defer ticker.Stop()
 
 	ttl := time.Duration(b.cfg.SessionTTLMinutes) * time.Minute
-	for range ticker.C {
-		b.sessions.Range(func(key, value any) bool {
-			entry, ok := value.(sessionEntry)
-			if ok && time.Since(entry.createdAt) > ttl {
-				b.sessions.Delete(key)
-			}
-			return true
-		})
-		if b.store != nil {
-			if err := b.store.PurgeExpiredSessions(b.cfg.Name, ttl); err != nil {
-				log.Printf("[%s] purge expired sessions: %v", b.cfg.Name, err)
+	for {
+		select {
+		case <-b.done:
+			return
+		case <-ticker.C:
+			b.sessions.Range(func(key, value any) bool {
+				entry, ok := value.(sessionEntry)
+				if ok && time.Since(entry.lastAccessAt) > ttl {
+					b.sessions.Delete(key)
+				}
+				return true
+			})
+			if b.store != nil {
+				if err := b.store.PurgeExpiredSessions(b.cfg.Name, ttl); err != nil {
+					log.Printf("[%s] purge expired sessions: %v", b.cfg.Name, err)
+				}
 			}
 		}
 	}
@@ -141,6 +149,13 @@ func (b *Runner) handleChannelMessage(ctx context.Context, s *discordgo.Session,
 	if err != nil {
 		s.ChannelMessageSend(m.ChannelID, err.Error())
 		return
+	}
+
+	if workingDir != "" {
+		if err := validateWorkingDir(b.cfg.WorkingDir, workingDir); err != nil {
+			s.ChannelMessageSend(m.ChannelID, err.Error())
+			return
+		}
 	}
 
 	if prompt == "" {
@@ -200,6 +215,13 @@ func (b *Runner) handleThreadMessage(ctx context.Context, s *discordgo.Session, 
 	if err != nil {
 		s.ChannelMessageSend(m.ChannelID, err.Error())
 		return
+	}
+
+	if workingDir != "" {
+		if err := validateWorkingDir(b.cfg.WorkingDir, workingDir); err != nil {
+			s.ChannelMessageSend(m.ChannelID, err.Error())
+			return
+		}
 	}
 
 	if prompt == "" {
@@ -268,7 +290,7 @@ func (b *Runner) updateSessionWorkingDir(channelID, workingDir string) {
 	} else {
 		updated = sessionEntry{
 			workingDir: workingDir,
-			createdAt:  time.Now(),
+			lastAccessAt:  time.Now(),
 		}
 	}
 	b.sessions.Store(channelID, updated)
@@ -283,7 +305,7 @@ func (b *Runner) storeSession(channelID, sessionID, workingDir string) {
 	entry := sessionEntry{
 		sessionID:  sessionID,
 		workingDir: workingDir,
-		createdAt:  time.Now(),
+		lastAccessAt:  time.Now(),
 	}
 	b.sessions.Store(channelID, entry)
 	b.threads.Claim(channelID, b.cfg.Name)
@@ -347,10 +369,11 @@ func isThreadChannel(s *discordgo.Session, channelID string) bool {
 }
 
 func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
+	runes := []rune(s)
+	if len(runes) <= maxLen {
 		return s
 	}
-	return fmt.Sprintf("%s...", s[:maxLen-3])
+	return string(runes[:maxLen-3]) + "..."
 }
 
 func matchesFilter(allowed []string, actual string) bool {
@@ -486,6 +509,23 @@ func parseWorkdirDirective(content string) (string, string, error) {
 
 	prompt := joinLines(lines[1:])
 	return absDir, prompt, nil
+}
+
+func validateWorkingDir(baseDir, targetDir string) error {
+	if baseDir == "" {
+		return fmt.Errorf("`working_dir` is not configured; `/cwd` changes are disabled")
+	}
+	absBase, err := filepath.Abs(baseDir)
+	if err != nil {
+		return fmt.Errorf("invalid base working directory: %v", err)
+	}
+	if targetDir == absBase {
+		return nil
+	}
+	if !strings.HasPrefix(targetDir, absBase+string(filepath.Separator)) {
+		return fmt.Errorf("path `%s` is outside allowed base directory `%s`", targetDir, absBase)
+	}
+	return nil
 }
 
 func joinLines(lines []string) string {

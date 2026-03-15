@@ -11,9 +11,9 @@ import (
 var threadsBucket = []byte("threads")
 
 type storedSession struct {
-	SessionID  string    `json:"session_id"`
-	WorkingDir string    `json:"working_dir"`
-	CreatedAt  time.Time `json:"created_at"`
+	SessionID    string    `json:"session_id"`
+	WorkingDir   string    `json:"working_dir"`
+	LastAccessAt time.Time `json:"last_access_at"`
 }
 
 type sessionStore struct {
@@ -49,7 +49,7 @@ func (s *sessionStore) PutSession(botName, channelID string, entry sessionEntry)
 	data, err := json.Marshal(storedSession{
 		SessionID:  entry.sessionID,
 		WorkingDir: entry.workingDir,
-		CreatedAt:  entry.createdAt,
+		LastAccessAt: entry.lastAccessAt,
 	})
 	if err != nil {
 		return err
@@ -88,9 +88,9 @@ func (s *sessionStore) AllSessions(botName string) map[string]sessionEntry {
 				return nil // skip corrupt entries
 			}
 			result[string(k)] = sessionEntry{
-				sessionID:  stored.SessionID,
-				workingDir: stored.WorkingDir,
-				createdAt:  stored.CreatedAt,
+				sessionID:    stored.SessionID,
+				workingDir:   stored.WorkingDir,
+				lastAccessAt: stored.LastAccessAt,
 			}
 			return nil
 		})
@@ -113,7 +113,7 @@ func (s *sessionStore) PurgeExpiredSessions(botName string, ttl time.Duration) e
 				expired = append(expired, append([]byte(nil), k...))
 				return nil
 			}
-			if time.Since(stored.CreatedAt) > ttl {
+			if time.Since(stored.LastAccessAt) > ttl {
 				expired = append(expired, append([]byte(nil), k...))
 			}
 			return nil
