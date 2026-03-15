@@ -4,6 +4,9 @@ ai-discord-bridge
 # Config (contains secrets)
 config/config.toml
 
+# Runtime data
+*.db
+
 # OS
 .DS_Store
 

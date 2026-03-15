@@ -2,6 +2,8 @@ APP := ai-discord-bridge
 CONFIG ?= config/config.toml
 GO ?= go
 FMT_FILES := $(shell rg --files -g '*.go')
+LOG_DIR ?= log
+RUN_LOG ?= $(LOG_DIR)/run.log
 
 .PHONY: build run test fmt lint clean
 
@@ -9,7 +11,10 @@ build:
 	$(GO) build -o $(APP) .
 
 run:
-	$(GO) run . -config $(CONFIG)
+	@mkdir -p $(LOG_DIR)
+	@nohup $(GO) run . -config $(CONFIG) > $(RUN_LOG) 2>&1 & echo $$! > $(LOG_DIR)/run.pid
+	@echo "Started in background: PID $$(cat $(LOG_DIR)/run.pid)"
+	@echo "Log: $(RUN_LOG)"
 
 test:
 	$(GO) test ./...

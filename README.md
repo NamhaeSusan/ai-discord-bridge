@@ -44,6 +44,8 @@ make lint
 make run CONFIG=config/config.toml
 ```
 
+`make run` starts the bot in the background and writes logs to `log/run.log`.
+
 ## Configuration
 
 Each bot uses one `[[bots]]` entry:
