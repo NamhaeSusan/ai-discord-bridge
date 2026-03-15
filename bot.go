@@ -541,7 +541,7 @@ func parseWorkdirDirective(content string) (string, string, error) {
 
 func validateWorkingDir(baseDir, targetDir string) error {
 	if baseDir == "" {
-		return fmt.Errorf("`working_dir` is not configured; `/cwd` changes are disabled")
+		return nil
 	}
 	absBase, err := filepath.Abs(baseDir)
 	if err != nil {

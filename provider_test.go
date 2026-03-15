@@ -293,6 +293,18 @@ func TestParseWorkdirDirectiveChangeOnly(t *testing.T) {
 	}
 }
 
+func TestValidateWorkingDirWithoutBaseDir(t *testing.T) {
+	if err := validateWorkingDir("", "/Users/kimtaeyun/ai-discord-bridge"); err != nil {
+		t.Fatalf("expected /cwd to be allowed without base dir, got %v", err)
+	}
+}
+
+func TestValidateWorkingDirRejectsOutsideBaseDir(t *testing.T) {
+	if err := validateWorkingDir("/Users/kimtaeyun", "/tmp"); err == nil {
+		t.Fatal("expected path outside base dir to be rejected")
+	}
+}
+
 func TestStripBotMention(t *testing.T) {
 	tests := []struct {
 		content string
