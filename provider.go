@@ -12,12 +12,13 @@ type Provider interface {
 }
 
 type ProviderResult struct {
-	Provider  string
-	SessionID string
-	Result    string
-	CostUSD   float64
-	HasCost   bool
-	Duration  time.Duration
+	Provider   string
+	SessionID  string
+	Result     string
+	CostUSD    float64
+	HasCost    bool
+	Duration   time.Duration
+	WorkingDir string
 }
 
 func NewProvider(cfg BotConfig) (Provider, error) {
