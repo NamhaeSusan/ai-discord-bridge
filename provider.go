@@ -15,8 +15,6 @@ type ProviderResult struct {
 	Provider   string
 	SessionID  string
 	Result     string
-	CostUSD    float64
-	HasCost    bool
 	Duration   time.Duration
 	WorkingDir string
 }

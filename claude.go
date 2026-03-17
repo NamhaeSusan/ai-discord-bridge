@@ -16,7 +16,6 @@ type ClaudeProvider struct {
 type claudeOutput struct {
 	SessionID string  `json:"session_id"`
 	Result    string  `json:"result"`
-	CostUSD   float64 `json:"cost_usd"`
 }
 
 func (p ClaudeProvider) Run(ctx context.Context, prompt, workingDir string) (*ProviderResult, error) {
@@ -55,8 +54,6 @@ func (p ClaudeProvider) run(ctx context.Context, sessionID, prompt, workingDir s
 		Provider:  "claude",
 		SessionID: parsed.SessionID,
 		Result:    parsed.Result,
-		CostUSD:   parsed.CostUSD,
-		HasCost:   true,
 		Duration:  duration,
 	}, nil
 }

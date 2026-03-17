@@ -50,10 +50,6 @@ func formatResultMeta(result *ProviderResult) string {
 		}
 	}
 
-	if result.HasCost {
-		parts = append(parts, fmt.Sprintf("💰 $%.4f", result.CostUSD))
-	}
-
 	duration := result.Duration.Truncate(100 * time.Millisecond)
 	parts = append(parts, fmt.Sprintf("⏱ %s", duration))
 

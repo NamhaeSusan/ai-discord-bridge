@@ -6,11 +6,9 @@ import (
 	"time"
 )
 
-func TestFormatResultMetaWithAllFields(t *testing.T) {
+func TestFormatResultMetaWithDir(t *testing.T) {
 	result := &ProviderResult{
 		WorkingDir: "/tmp/testdir",
-		HasCost:    true,
-		CostUSD:    0.0312,
 		Duration:   3200 * time.Millisecond,
 	}
 	got := formatResultMeta(result)
@@ -18,42 +16,22 @@ func TestFormatResultMetaWithAllFields(t *testing.T) {
 	if !strings.Contains(got, "📂") {
 		t.Errorf("expected dir emoji, got %q", got)
 	}
-	if !strings.Contains(got, "💰 $0.0312") {
-		t.Errorf("expected cost, got %q", got)
+	if strings.Contains(got, "💰") {
+		t.Errorf("expected no cost section, got %q", got)
 	}
 	if !strings.Contains(got, "⏱ 3.2s") {
 		t.Errorf("expected duration, got %q", got)
 	}
 }
 
-func TestFormatResultMetaNoCost(t *testing.T) {
-	result := &ProviderResult{
-		WorkingDir: "/tmp/testdir",
-		Duration:   1500 * time.Millisecond,
-	}
-	got := formatResultMeta(result)
-
-	if strings.Contains(got, "💰") {
-		t.Errorf("expected no cost section, got %q", got)
-	}
-	if !strings.Contains(got, "⏱ 1.5s") {
-		t.Errorf("expected duration, got %q", got)
-	}
-}
-
 func TestFormatResultMetaNoWorkingDir(t *testing.T) {
 	result := &ProviderResult{
-		HasCost:  true,
-		CostUSD:  0.01,
 		Duration: 2 * time.Second,
 	}
 	got := formatResultMeta(result)
 
 	if strings.Contains(got, "📂") {
 		t.Errorf("expected no dir section, got %q", got)
-	}
-	if !strings.Contains(got, "💰 $0.0100") {
-		t.Errorf("expected cost, got %q", got)
 	}
 }
 
