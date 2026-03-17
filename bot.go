@@ -232,6 +232,11 @@ func (b *Runner) handleChannelMessage(ctx context.Context, s *discordgo.Session,
 		return
 	}
 
+	effectiveDir := workingDir
+	if effectiveDir == "" {
+		effectiveDir = b.cfg.WorkingDir
+	}
+	result.WorkingDir = effectiveDir
 	b.sendChunks(s, thread.ID, result)
 	b.storeSession(thread.ID, result.SessionID, workingDir)
 }
@@ -280,14 +285,17 @@ func (b *Runner) handleThreadMessage(ctx context.Context, s *discordgo.Session, 
 		s.ChannelMessageSend(m.ChannelID, "> ⚠️ Session changed — previous context was compacted or lost. Responses below may lack earlier context.")
 	}
 
-	b.sendChunks(s, m.ChannelID, result)
-
 	effectiveDir := workingDir
 	if effectiveDir == "" {
 		if entry, ok := b.sessions.Load(m.ChannelID); ok {
 			effectiveDir = entry.(sessionEntry).workingDir
 		}
 	}
+	if effectiveDir == "" {
+		effectiveDir = b.cfg.WorkingDir
+	}
+	result.WorkingDir = effectiveDir
+	b.sendChunks(s, m.ChannelID, result)
 	b.storeSession(m.ChannelID, result.SessionID, effectiveDir)
 }
 

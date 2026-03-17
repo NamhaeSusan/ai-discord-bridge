@@ -2,6 +2,9 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -36,11 +39,71 @@ func FormatResponse(result *ProviderResult) []string {
 }
 
 func formatResultMeta(result *ProviderResult) string {
-	duration := result.Duration.Truncate(100 * time.Millisecond)
-	if result.HasCost {
-		return fmt.Sprintf("\n\n> Provider: %s | Cost: $%.4f | Duration: %s", result.Provider, result.CostUSD, duration)
+	var parts []string
+
+	if result.WorkingDir != "" {
+		dirPart := "📂 " + shortenDir(result.WorkingDir)
+		if info := gitBranchInfo(result.WorkingDir); info != "" {
+			dirPart += " (" + info + ")"
+		}
+		parts = append(parts, dirPart)
 	}
-	return fmt.Sprintf("\n\n> Provider: %s | Duration: %s", result.Provider, duration)
+
+	if result.HasCost {
+		parts = append(parts, fmt.Sprintf("💰 $%.4f", result.CostUSD))
+	}
+
+	duration := result.Duration.Truncate(100 * time.Millisecond)
+	parts = append(parts, fmt.Sprintf("⏱ %s", duration))
+
+	return "\n\n> " + strings.Join(parts, " | ")
+}
+
+func shortenDir(dir string) string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return filepath.Clean(dir)
+	}
+	if dir == home {
+		return "~"
+	}
+	if strings.HasPrefix(dir, home+string(filepath.Separator)) {
+		return "~" + dir[len(home):]
+	}
+	return filepath.Clean(dir)
+}
+
+func gitBranchInfo(dir string) string {
+	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	branch := strings.TrimSpace(string(out))
+	if branch == "" {
+		return ""
+	}
+
+	cmd = exec.Command("git", "status", "--porcelain")
+	cmd.Dir = dir
+	out, err = cmd.Output()
+	if err != nil {
+		return branch
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	changes := 0
+	for _, l := range lines {
+		if l != "" {
+			changes++
+		}
+	}
+
+	if changes > 0 {
+		return fmt.Sprintf("%s ✎%d", branch, changes)
+	}
+	return branch
 }
 
 func splitIntoChunks(text string) []string {
