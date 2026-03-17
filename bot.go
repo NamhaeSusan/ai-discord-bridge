@@ -268,12 +268,16 @@ func (b *Runner) handleThreadMessage(ctx context.Context, s *discordgo.Session, 
 	done := make(chan struct{})
 	go b.sendTyping(s, m.ChannelID, done)
 
-	result, err := b.runThreadMessage(ctx, m.ChannelID, prompt, workingDir)
+	result, sessionChanged, err := b.runThreadMessage(ctx, m.ChannelID, prompt, workingDir)
 	close(done)
 	if err != nil {
 		log.Printf("[%s] provider error for user %s: %v", b.cfg.Name, m.Author.ID, err)
 		s.ChannelMessageSend(m.ChannelID, "Something went wrong. Check bot logs for details.")
 		return
+	}
+
+	if sessionChanged {
+		s.ChannelMessageSend(m.ChannelID, "> ⚠️ Session changed — previous context was compacted or lost. Responses below may lack earlier context.")
 	}
 
 	b.sendChunks(s, m.ChannelID, result)
@@ -287,10 +291,12 @@ func (b *Runner) handleThreadMessage(ctx context.Context, s *discordgo.Session, 
 	b.storeSession(m.ChannelID, result.SessionID, effectiveDir)
 }
 
-func (b *Runner) runThreadMessage(ctx context.Context, channelID, prompt, workingDir string) (*ProviderResult, error) {
+func (b *Runner) runThreadMessage(ctx context.Context, channelID, prompt, workingDir string) (result *ProviderResult, sessionChanged bool, err error) {
 	entry, ok := b.sessions.Load(channelID)
 	if !ok {
-		return b.provider.Run(ctx, prompt, workingDir)
+		log.Printf("[%s] thread %s: no existing session, starting new", b.cfg.Name, channelID)
+		r, err := b.provider.Run(ctx, prompt, workingDir)
+		return r, false, err
 	}
 
 	session := entry.(sessionEntry)
@@ -298,15 +304,24 @@ func (b *Runner) runThreadMessage(ctx context.Context, channelID, prompt, workin
 		workingDir = session.workingDir
 	}
 	if session.sessionID == "" {
-		return b.provider.Run(ctx, prompt, workingDir)
+		log.Printf("[%s] thread %s: stored session has empty ID, starting new", b.cfg.Name, channelID)
+		r, err := b.provider.Run(ctx, prompt, workingDir)
+		return r, false, err
 	}
 
-	result, err := b.provider.Resume(ctx, session.sessionID, prompt, workingDir)
+	r, err := b.provider.Resume(ctx, session.sessionID, prompt, workingDir)
 	if err != nil {
-		log.Printf("resume failed, starting new session: %v", err)
-		return b.provider.Run(ctx, prompt, workingDir)
+		log.Printf("[%s] thread %s: resume %s failed: %v — starting new session", b.cfg.Name, channelID, session.sessionID, err)
+		r, err = b.provider.Run(ctx, prompt, workingDir)
+		return r, true, err
 	}
-	return result, nil
+
+	if r.SessionID != session.sessionID {
+		log.Printf("[%s] thread %s: session changed %s -> %s (context compaction)", b.cfg.Name, channelID, session.sessionID, r.SessionID)
+		return r, true, nil
+	}
+
+	return r, false, nil
 }
 
 func (b *Runner) updateSessionWorkingDir(channelID, workingDir string) {
