@@ -232,11 +232,7 @@ func (b *Runner) handleChannelMessage(ctx context.Context, s *discordgo.Session,
 		return
 	}
 
-	effectiveDir := workingDir
-	if effectiveDir == "" {
-		effectiveDir = b.cfg.WorkingDir
-	}
-	result.WorkingDir = effectiveDir
+	result.WorkingDir = effectiveWorkingDir(b.cfg, workingDir)
 	b.sendChunks(s, thread.ID, result)
 	b.storeSession(thread.ID, result.SessionID, workingDir)
 }
@@ -291,10 +287,8 @@ func (b *Runner) handleThreadMessage(ctx context.Context, s *discordgo.Session, 
 			effectiveDir = entry.(sessionEntry).workingDir
 		}
 	}
-	if effectiveDir == "" {
-		effectiveDir = b.cfg.WorkingDir
-	}
-	result.WorkingDir = effectiveDir
+
+	result.WorkingDir = effectiveWorkingDir(b.cfg, effectiveDir)
 	b.sendChunks(s, m.ChannelID, result)
 	b.storeSession(m.ChannelID, result.SessionID, effectiveDir)
 }

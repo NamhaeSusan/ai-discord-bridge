@@ -68,7 +68,7 @@ func TestFormatResultMetaDurationOnly(t *testing.T) {
 	}
 }
 
-func TestShortenDir(t *testing.T) {
+func TestShortenHome(t *testing.T) {
 	tests := []struct {
 		dir  string
 		want string
@@ -77,9 +77,9 @@ func TestShortenDir(t *testing.T) {
 		{"/usr/local", "/usr/local"},
 	}
 	for _, tt := range tests {
-		got := shortenDir(tt.dir)
+		got := shortenHome(tt.dir)
 		if got != tt.want {
-			t.Errorf("shortenDir(%q) = %q, want %q", tt.dir, got, tt.want)
+			t.Errorf("shortenHome(%q) = %q, want %q", tt.dir, got, tt.want)
 		}
 	}
 }

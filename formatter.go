@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -42,11 +41,13 @@ func formatResultMeta(result *ProviderResult) string {
 	var parts []string
 
 	if result.WorkingDir != "" {
-		dirPart := "📂 " + shortenDir(result.WorkingDir)
-		if info := gitBranchInfo(result.WorkingDir); info != "" {
-			dirPart += " (" + info + ")"
+		dir := shortenHome(result.WorkingDir)
+		git := gitInfo(result.WorkingDir)
+		if git != "" {
+			parts = append(parts, fmt.Sprintf("📂 %s (%s)", dir, git))
+		} else {
+			parts = append(parts, fmt.Sprintf("📂 %s", dir))
 		}
-		parts = append(parts, dirPart)
 	}
 
 	if result.HasCost {
@@ -59,51 +60,35 @@ func formatResultMeta(result *ProviderResult) string {
 	return "\n\n> " + strings.Join(parts, " | ")
 }
 
-func shortenDir(dir string) string {
+func shortenHome(dir string) string {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return filepath.Clean(dir)
+		return dir
 	}
 	if dir == home {
 		return "~"
 	}
-	if strings.HasPrefix(dir, home+string(filepath.Separator)) {
+	if strings.HasPrefix(dir, home+string(os.PathSeparator)) {
 		return "~" + dir[len(home):]
 	}
-	return filepath.Clean(dir)
+	return dir
 }
 
-func gitBranchInfo(dir string) string {
-	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
-	cmd.Dir = dir
-	out, err := cmd.Output()
+func gitInfo(dir string) string {
+	branch, err := exec.Command("git", "-C", dir, "rev-parse", "--abbrev-ref", "HEAD").Output()
 	if err != nil {
 		return ""
 	}
-	branch := strings.TrimSpace(string(out))
-	if branch == "" {
-		return ""
-	}
+	info := strings.TrimSpace(string(branch))
 
-	cmd = exec.Command("git", "status", "--porcelain")
-	cmd.Dir = dir
-	out, err = cmd.Output()
-	if err != nil {
-		return branch
-	}
-
-	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-	changes := 0
-	for _, l := range lines {
-		if l != "" {
-			changes++
+	out, err := exec.Command("git", "-C", dir, "status", "--porcelain").Output()
+	if err == nil {
+		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+		if len(lines) > 0 && lines[0] != "" {
+			info += fmt.Sprintf(" ✎%d", len(lines))
 		}
 	}
-
-	if changes > 0 {
-		return fmt.Sprintf("%s ✎%d", branch, changes)
-	}
-	return branch
+	return info
 }
 
 func splitIntoChunks(text string) []string {
