@@ -27,13 +27,19 @@ Discord bot that bridges AI CLI tools like Claude Code and Codex to Discord chan
 
 1. Create a Discord bot at [Discord Developer Portal](https://discord.com/developers/applications)
 2. Enable **Message Content Intent** under Bot settings
-3. Copy config example:
+3. Invite the bot with the following permissions:
+   - **Send Messages**
+   - **Send Messages in Threads**
+   - **Create Public Threads**
+   - **Manage Threads** (archive/lock expired sessions)
+   - **Read Message History**
+4. Copy config example:
 
 ```bash
 cp config/config.example.toml config/config.toml
 ```
 
-4. Fill in one or more `[[bots]]` entries
+5. Fill in one or more `[[bots]]` entries
 
 You can also use the included `Makefile` for common tasks:
 
@@ -73,9 +79,9 @@ Legacy top-level Claude config and env overrides still work for a single-bot set
 You can start a thread in a different repository by putting `/cwd <path>` on the first line:
 
 ```text
-/cwd /Users/kimtaeyun/trelab-workspace/trelab-drb/trelab-drb-server
+/cwd /path/to/other/project
 
-PostgreSQL support work 이어서
+Continue PostgreSQL support work
 ```
 
 The parsed directory is stored for that Discord thread and reused on follow-up replies.
@@ -122,4 +128,4 @@ make build
 
 ## License
 
-Private
+[MIT](LICENSE)
