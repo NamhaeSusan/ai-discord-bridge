@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -69,6 +67,7 @@ func NewBot(cfg BotConfig, registry *threadRegistry, store *sessionStore) (*Runn
 	}
 
 	dg.AddHandler(bot.onMessageCreate)
+	dg.AddHandler(bot.onInteractionCreate)
 	return bot, nil
 }
 
@@ -172,48 +171,19 @@ func (b *Runner) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreat
 
 func (b *Runner) handleChannelMessage(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate) {
 	content := stripBotMention(m.Content, s.State.User.ID)
-	workingDir, prompt, err := parseWorkdirDirective(content)
+	cmd, err := parseCwdCommand(content)
 	if err != nil {
 		s.ChannelMessageSend(m.ChannelID, err.Error())
 		return
 	}
 
-	if workingDir != "" {
-		if err := validateWorkingDir(b.cfg.WorkingDir, workingDir); err != nil {
-			s.ChannelMessageSend(m.ChannelID, err.Error())
-			return
-		}
-	}
-
-	if prompt == "" {
-		displayDir := workingDir
-		if displayDir == "" {
-			displayDir = b.cfg.WorkingDir
-		}
-		threadName := "/cwd"
-		if displayDir != "" {
-			threadName = fmt.Sprintf("/cwd %s", displayDir)
-		}
-		thread, err := s.MessageThreadStartComplex(m.ChannelID, m.ID, &discordgo.ThreadStart{
-			Name:                truncate(threadName, 100),
-			AutoArchiveDuration: 60,
-		})
-		if err != nil {
-			log.Printf("[%s] create thread: %v", b.cfg.Name, err)
-			return
-		}
-		if workingDir != "" {
-			b.storeSession(thread.ID, "", workingDir)
-			s.ChannelMessageSend(thread.ID, fmt.Sprintf("Working directory set to `%s`", workingDir))
-		} else {
-			b.threads.Claim(thread.ID, b.cfg.Name)
-			s.ChannelMessageSend(thread.ID, cwdDisplayMessage(displayDir))
-		}
+	if cmd.Kind != cwdCommandPrompt {
+		b.handleChannelCwdCommand(ctx, s, m, cmd)
 		return
 	}
 
 	thread, err := s.MessageThreadStartComplex(m.ChannelID, m.ID, &discordgo.ThreadStart{
-		Name:                truncate(prompt, 100),
+		Name:                truncate(cmd.Prompt, 100),
 		AutoArchiveDuration: 60,
 	})
 	if err != nil {
@@ -221,76 +191,23 @@ func (b *Runner) handleChannelMessage(ctx context.Context, s *discordgo.Session,
 		return
 	}
 
-	done := make(chan struct{})
-	go b.sendTyping(s, thread.ID, done)
-
-	result, err := b.provider.Run(ctx, prompt, workingDir)
-	close(done)
-	if err != nil {
-		log.Printf("[%s] provider error for user %s: %v", b.cfg.Name, m.Author.ID, err)
-		s.ChannelMessageSend(thread.ID, "Something went wrong. Check bot logs for details.")
-		return
-	}
-
-	result.WorkingDir = effectiveWorkingDir(b.cfg, workingDir)
-	b.sendChunks(s, thread.ID, result)
-	b.storeSession(thread.ID, result.SessionID, workingDir)
+	b.runNewThreadPrompt(ctx, s, thread.ID, m.Author.ID, cmd.Prompt, "")
 }
 
 func (b *Runner) handleThreadMessage(ctx context.Context, s *discordgo.Session, m *discordgo.MessageCreate) {
 	content := stripBotMention(m.Content, s.State.User.ID)
-	workingDir, prompt, err := parseWorkdirDirective(content)
+	cmd, err := parseCwdCommand(content)
 	if err != nil {
 		s.ChannelMessageSend(m.ChannelID, err.Error())
 		return
 	}
 
-	if workingDir != "" {
-		if err := validateWorkingDir(b.cfg.WorkingDir, workingDir); err != nil {
-			s.ChannelMessageSend(m.ChannelID, err.Error())
-			return
-		}
-	}
-
-	if prompt == "" {
-		if workingDir == "" {
-			displayDir := b.cfg.WorkingDir
-			if entry, ok := b.sessions.Load(m.ChannelID); ok {
-				displayDir = entry.(sessionEntry).workingDir
-			}
-			s.ChannelMessageSend(m.ChannelID, cwdDisplayMessage(displayDir))
-		} else {
-			b.updateSessionWorkingDir(m.ChannelID, workingDir)
-			s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Working directory set to `%s`", workingDir))
-		}
+	if cmd.Kind != cwdCommandPrompt {
+		b.handleThreadCwdCommand(ctx, s, m, cmd)
 		return
 	}
 
-	done := make(chan struct{})
-	go b.sendTyping(s, m.ChannelID, done)
-
-	result, sessionChanged, err := b.runThreadMessage(ctx, m.ChannelID, prompt, workingDir)
-	close(done)
-	if err != nil {
-		log.Printf("[%s] provider error for user %s: %v", b.cfg.Name, m.Author.ID, err)
-		s.ChannelMessageSend(m.ChannelID, "Something went wrong. Check bot logs for details.")
-		return
-	}
-
-	if sessionChanged {
-		s.ChannelMessageSend(m.ChannelID, "> ⚠️ Session changed — previous context was compacted or lost. Responses below may lack earlier context.")
-	}
-
-	effectiveDir := workingDir
-	if effectiveDir == "" {
-		if entry, ok := b.sessions.Load(m.ChannelID); ok {
-			effectiveDir = entry.(sessionEntry).workingDir
-		}
-	}
-
-	result.WorkingDir = effectiveWorkingDir(b.cfg, effectiveDir)
-	b.sendChunks(s, m.ChannelID, result)
-	b.storeSession(m.ChannelID, result.SessionID, effectiveDir)
+	b.runExistingThreadPrompt(ctx, s, m.ChannelID, m.Author.ID, cmd.Prompt, b.currentWorkingDir(m.ChannelID))
 }
 
 func (b *Runner) runThreadMessage(ctx context.Context, channelID, prompt, workingDir string) (result *ProviderResult, sessionChanged bool, err error) {
@@ -387,13 +304,6 @@ func (b *Runner) sendTyping(s *discordgo.Session, channelID string, done <-chan 
 			_ = s.ChannelTyping(channelID)
 		}
 	}
-}
-
-func cwdDisplayMessage(dir string) string {
-	if dir == "" {
-		return "Working directory not set. Use `/cwd <path>` to set it."
-	}
-	return fmt.Sprintf("Working directory: `%s`", dir)
 }
 
 func stripBotMention(content string, botID string) string {
@@ -518,59 +428,6 @@ func (r *threadRegistry) Owner(channelID string) (string, bool) {
 	}
 
 	return name, true
-}
-
-func parseWorkdirDirective(content string) (string, string, error) {
-	if content == "" {
-		return "", "", fmt.Errorf("message cannot be empty")
-	}
-	lines := strings.Split(content, "\n")
-
-	first := lines[0]
-	if len(first) == 0 || first[:1] != "/" {
-		return "", content, nil
-	}
-
-	const prefix = "/cwd "
-	if first == "/cwd" {
-		return "", "", nil
-	}
-	if len(first) < len(prefix) || first[:len(prefix)] != prefix {
-		return "", content, nil
-	}
-
-	dir := first[len(prefix):]
-	absDir, err := filepath.Abs(dir)
-	if err != nil {
-		return "", "", fmt.Errorf("invalid `/cwd` path: %v", err)
-	}
-	info, err := os.Stat(absDir)
-	if err != nil {
-		return "", "", fmt.Errorf("working directory not found: `%s`", absDir)
-	}
-	if !info.IsDir() {
-		return "", "", fmt.Errorf("working directory is not a directory: `%s`", absDir)
-	}
-
-	prompt := joinLines(lines[1:])
-	return absDir, prompt, nil
-}
-
-func validateWorkingDir(baseDir, targetDir string) error {
-	if baseDir == "" {
-		return nil
-	}
-	absBase, err := filepath.Abs(baseDir)
-	if err != nil {
-		return fmt.Errorf("invalid base working directory: %v", err)
-	}
-	if targetDir == absBase {
-		return nil
-	}
-	if !strings.HasPrefix(targetDir, absBase+string(filepath.Separator)) {
-		return fmt.Errorf("path `%s` is outside allowed base directory `%s`", targetDir, absBase)
-	}
-	return nil
 }
 
 func joinLines(lines []string) string {

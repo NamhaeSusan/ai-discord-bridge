@@ -7,7 +7,7 @@ Discord bot that bridges AI CLI tools like Claude Code and Codex to Discord chan
 - Run multiple Discord bots from one process
 - Send Discord messages to Claude or Codex and continue in the created thread
 - Reply in a thread to resume the same Claude or Codex session
-- Override the working directory per thread with a `/cwd <path>` first line
+- Switch the working directory with `/cwd`, aliases, recent history, and picker UI
 - TOML config file for multi-bot setup, plus legacy single-bot env overrides
 - Channel/user whitelist filtering
 - Auto-chunking for messages over 2000 characters (with code block split handling)
@@ -74,9 +74,22 @@ Each bot uses one `[[bots]]` entry:
 
 Legacy top-level Claude config and env overrides still work for a single-bot setup. The new multi-bot format is TOML-first.
 
-### Per-thread working directory override
+### Working directory commands
 
-You can start a thread in a different repository by putting `/cwd <path>` on the first line:
+`/cwd` works per thread. It can show the current directory, switch to a saved alias, or reuse a recent path.
+
+```text
+/cwd
+/cwd <alias>
+/cwd <path>
+/cwd recent
+/cwd recent <n>
+/cwd alias list
+/cwd alias add <name> <path>
+/cwd alias rm <name>
+```
+
+You can still start a thread in a different repository by putting `/cwd <path>` on the first line:
 
 ```text
 /cwd /path/to/other/project
@@ -84,7 +97,11 @@ You can start a thread in a different repository by putting `/cwd <path>` on the
 Continue PostgreSQL support work
 ```
 
-The parsed directory is stored for that Discord thread and reused on follow-up replies.
+The selected directory is stored for that Discord thread and reused on follow-up replies. Successful `/cwd` changes are also saved into a per-bot recent list, and `/cwd` without arguments posts a picker with aliases and recent paths.
+
+Alias management is persisted in bbolt and requires Discord administrator permissions in a server channel.
+
+All `/cwd` targets must stay under the current user's home directory.
 
 Example:
 

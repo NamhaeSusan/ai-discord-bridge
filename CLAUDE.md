@@ -7,8 +7,10 @@ Discord 봇으로 AI CLI 도구 (Claude Code 등)를 Discord 채널에서 사용
 
 - Discord 채널 메시지를 Claude/Codex CLI 실행으로 연결
 - 생성된 thread에서 동일 세션 이어쓰기
-- `/cwd` 명령어로 작업 디렉터리 조회, `/cwd <path>`로 변경 (프롬프트 없이도 사용 가능)
+- `/cwd` 명령어로 작업 디렉터리 조회, alias/recent 선택 UI 제공, `/cwd <alias|path>`로 변경
 - thread별 작업 디렉터리 세션 저장 및 재사용
+- 공용 alias 및 최근 경로를 bbolt에 영속 저장
+- `/cwd` 경로는 현재 사용자 홈 디렉터리 하위로 제한
 - bbolt 기반 세션 영속화 (재시작 후에도 thread-session 매핑 유지)
 - 세션 만료 시 thread 안내 메시지 전송, thread 자동 종료, 부모 채널 알림
 - provider 응답이 비어 있을 때 메타데이터만 보내지 않고 fallback 메시지 전송
@@ -20,6 +22,8 @@ ai-discord-bridge/
 ├── main.go              # 엔트리포인트 (멀티봇 실행, CLI 존재 확인)
 ├── config.go            # TOML/legacy env 설정 로드, 기본값/정규화
 ├── bot.go               # Discord 이벤트 핸들러, 세션 맵, 세마포어
+├── cwd.go               # /cwd 명령 파싱, 경로 검증, Discord picker 구성
+├── cwd_runner.go        # /cwd 명령 실행, alias/recent 처리, interaction 핸들러
 ├── store.go             # bbolt 기반 세션/스레드 영속화
 ├── provider.go          # provider 인터페이스와 공통 결과 타입
 ├── claude.go            # Claude CLI 실행

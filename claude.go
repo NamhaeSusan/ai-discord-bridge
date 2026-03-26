@@ -14,8 +14,8 @@ type ClaudeProvider struct {
 }
 
 type claudeOutput struct {
-	SessionID string  `json:"session_id"`
-	Result    string  `json:"result"`
+	SessionID string `json:"session_id"`
+	Result    string `json:"result"`
 }
 
 func (p ClaudeProvider) Run(ctx context.Context, prompt, workingDir string) (*ProviderResult, error) {
